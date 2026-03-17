@@ -8,88 +8,346 @@ generator client {
 }
 
 model User {
-  id          String       @id @default(cuid())
-  name        String       @unique
-  email       String?      @unique
-  accessCode  String       @unique
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id              String    @id @default(cuid())
+  name            String?
+  email           String?   @unique
+  image           String?
+  emailVerified   DateTime?
+  role            UserRole  @default(USER)
 
-  predictions Prediction[]
+  bio             String?
+  favoriteTeamId  String?
+  favoriteColor   String?
+  profileBanner   String?
+  displayName     String?
+  isProfilePublic Boolean   @default(true)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastSeenAt      DateTime?
+
+  favoriteTeam    Team?        @relation("FavoriteTeam", fields: [favoriteTeamId], references: [id], onDelete: SetNull)
+
+  accounts        Account[]
+  sessions        Session[]
+  predictions     Prediction[]
+  memberships     GameMember[]
+  ownedGames      Game[]       @relation("GameOwner")
+  sentInvites     GameInvite[] @relation("InviteCreatedBy")
+
+  @@index([email])
+  @@index([displayName])
 }
-model Team {
-  id          String    @id @default(cuid())
-  name        String    @unique
-  shortName   String?
-  logo        String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
 
-  homeMatches Match[]   @relation("HomeTeamMatches")
-  awayMatches Match[]   @relation("AwayTeamMatches")
+model Account {
+  id                String @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Team {
+  id             String   @id @default(cuid())
+  name           String
+  shortName      String?
+  code           String?
+  logo           String?
+  country        String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  homeMatches    Match[]  @relation("HomeTeamMatches")
+  awayMatches    Match[]  @relation("AwayTeamMatches")
+  favoredByUsers User[]   @relation("FavoriteTeam")
+
+  @@unique([name])
+  @@index([shortName])
+  @@index([code])
+}
+
+model Season {
+  id          String      @id @default(cuid())
+  name        String
+  yearLabel   String?
+  isCurrent   Boolean     @default(false)
+  startsAt    DateTime?
+  endsAt      DateTime?
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  tournaments Tournament[]
+
+  @@unique([name])
+  @@index([isCurrent])
 }
 
 model Tournament {
-  id          String    @id @default(cuid())
-  name        String    @unique
-  season      String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id          String   @id @default(cuid())
+  name        String
+  slug        String?
+  country     String?
+  logo        String?
+  isActive    Boolean  @default(true)
+  seasonId    String?
 
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  season      Season?  @relation(fields: [seasonId], references: [id], onDelete: SetNull)
   rounds      Round[]
   matches     Match[]
+  games       Game[]
+
+  @@unique([name])
+  @@unique([slug])
+  @@index([seasonId])
+  @@index([isActive])
 }
 
 model Round {
-  id            String      @id @default(cuid())
-  name          String
-  order         Int?
-  tournamentId  String
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id              String     @id @default(cuid())
+  tournamentId    String
+  name            String
+  slug            String?
+  order           Int?
+  defaultWeight   Int        @default(1)
 
-  tournament    Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  matches       Match[]
+  startsAt        DateTime?
+  endsAt          DateTime?
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  tournament      Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  matches         Match[]
 
   @@unique([tournamentId, name])
+  @@index([tournamentId, order])
+  @@index([slug])
 }
 
 model Match {
-  id              String        @id @default(cuid())
+  id              String       @id @default(cuid())
+  externalId      String?      @unique
+
   tournamentId    String
   roundId         String?
+
   homeTeamId      String
   awayTeamId      String
+
+  venue           String?
+  stageLabel      String?
+  matchdayLabel   String?
+
   startTime       DateTime
-  status          MatchStatus   @default(SCHEDULED)
+  status          MatchStatus @default(SCHEDULED)
+
   homeScore       Int?
   awayScore       Int?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
 
-  tournament      Tournament    @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  round           Round?        @relation(fields: [roundId], references: [id], onDelete: SetNull)
-  homeTeam        Team          @relation("HomeTeamMatches", fields: [homeTeamId], references: [id])
-  awayTeam        Team          @relation("AwayTeamMatches", fields: [awayTeamId], references: [id])
-  predictions     Prediction[]
+  extraHomeScore  Int?
+  extraAwayScore  Int?
+  penaltyHome     Int?
+  penaltyAway     Int?
 
-  @@unique([homeTeamId, awayTeamId, startTime])
-}
+  sourceUpdatedAt DateTime?
+  lockedAt        DateTime?
 
-model Prediction {
-  id              String   @id @default(cuid())
-  userId          String
-  matchId         String
-  predictedHome   Int
-  predictedAway   Int
-  pointsAwarded   Int      @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  match           Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  tournament      Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  round           Round?     @relation(fields: [roundId], references: [id], onDelete: SetNull)
+  homeTeam        Team       @relation("HomeTeamMatches", fields: [homeTeamId], references: [id])
+  awayTeam        Team       @relation("AwayTeamMatches", fields: [awayTeamId], references: [id])
 
-  @@unique([userId, matchId])
+  predictions     Prediction[]
+  gameMatches     GameMatch[]
+
+  @@unique([homeTeamId, awayTeamId, startTime])
+  @@index([tournamentId, startTime])
+  @@index([roundId])
+  @@index([status, startTime])
+}
+
+model Game {
+  id                        String         @id @default(cuid())
+  name                      String
+  slug                      String?        @unique
+  description               String?
+
+  bannerUrl                 String?
+  avatarUrl                 String?
+
+  ownerId                   String
+  linkedTournamentId        String?
+
+  inviteCode                String         @unique
+  visibility                GameVisibility @default(PRIVATE)
+  status                    GameStatus     @default(ACTIVE)
+
+  allowJoinByCode           Boolean        @default(true)
+  allowMemberPredictionsEdit Boolean       @default(true)
+
+  timezone                  String?
+
+  scoringExact              Int            @default(3)
+  scoringOutcome            Int            @default(1)
+  scoringWrong              Int            @default(0)
+
+  defaultRoundWeight        Int            @default(1)
+  lockMinutesBeforeStart    Int            @default(0)
+
+  startsAt                  DateTime?
+  endsAt                    DateTime?
+  archivedAt                DateTime?
+
+  createdAt                 DateTime       @default(now())
+  updatedAt                 DateTime       @updatedAt
+
+  owner                     User           @relation("GameOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  linkedTournament          Tournament?    @relation(fields: [linkedTournamentId], references: [id], onDelete: SetNull)
+
+  members                   GameMember[]
+  invites                   GameInvite[]
+  gameMatches               GameMatch[]
+  predictions               Prediction[]
+
+  @@index([ownerId])
+  @@index([linkedTournamentId])
+  @@index([visibility, status])
+}
+
+model GameMember {
+  id              String           @id @default(cuid())
+  userId          String
+  gameId          String
+
+  role            GameMemberRole   @default(MEMBER)
+  status          MembershipStatus @default(ACTIVE)
+
+  nickname        String?
+  joinedAt        DateTime         @default(now())
+  leftAt          DateTime?
+  kickedAt        DateTime?
+  lastSeenAt      DateTime?
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game            Game             @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, gameId])
+  @@index([gameId, role])
+  @@index([userId])
+}
+
+model GameInvite {
+  id              String         @id @default(cuid())
+  gameId          String
+  code            String         @unique
+
+  createdById     String?
+  email           String?
+
+  roleOnJoin      GameMemberRole @default(MEMBER)
+  maxUses         Int?
+  usedCount       Int            @default(0)
+
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  game            Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  createdBy       User?          @relation("InviteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([gameId])
+  @@index([expiresAt])
+}
+
+model GameMatch {
+  id                   String   @id @default(cuid())
+  gameId               String
+  matchId              String
+
+  customWeight         Int?
+  bonusLabel           String?
+  includeInLeaderboard Boolean  @default(true)
+  isLocked             Boolean  @default(false)
+
+  predictionOpensAt    DateTime?
+  predictionClosesAt   DateTime?
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  game                 Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  match                Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, matchId])
+  @@index([gameId])
+  @@index([matchId])
+}
+
+model Prediction {
+  id                    String   @id @default(cuid())
+  userId                String
+  gameId                String
+  matchId               String
+
+  predictedHome         Int
+  predictedAway         Int
+
+  pointsAwarded         Int      @default(0)
+  weightUsed            Int      @default(1)
+  weightedPointsAwarded Int      @default(0)
+
+  multiplierUsed        Int      @default(1)
+
+  wasExact              Boolean  @default(false)
+  wasOutcomeOnly        Boolean  @default(false)
+  wasWrong              Boolean  @default(false)
+
+  submittedAt           DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  lockedAt              DateTime?
+  scoreCalculatedAt     DateTime?
+
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game                  Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  match                 Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, gameId, matchId])
+  @@index([gameId, matchId])
+  @@index([userId, gameId])
 }
 
 enum MatchStatus {
@@ -97,4 +355,35 @@ enum MatchStatus {
   LIVE
   FINISHED
   CANCELED
+  POSTPONED
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum GameStatus {
+  ACTIVE
+  ARCHIVED
+  DRAFT
+}
+
+enum GameVisibility {
+  PRIVATE
+  PUBLIC
+  UNLISTED
+}
+
+enum GameMemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  LEFT
+  KICKED
+  BANNED
 }
