@@ -1,7 +1,7 @@
 import { Link, data, useLoaderData, type LoaderFunctionArgs } from "react-router";
 import { prisma } from "~/lib/db.server";
 import { requireUser } from "~/lib/auth.server";
-
+import { Form } from "react-router";
 function getOutcome(home: number, away: number) {
   if (home > away) return "HOME";
   if (home < away) return "AWAY";

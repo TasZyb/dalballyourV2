@@ -42,6 +42,32 @@ function calculateBasePoints(
   return 0;
 }
 
+function generateInviteCode(length = 4) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let result = "";
+
+  for (let i = 0; i < length; i++) {
+    result += chars[Math.floor(Math.random() * chars.length)];
+  }
+
+  return result;
+}
+
+async function getUniqueGameInviteCode() {
+  for (let i = 0; i < 30; i++) {
+    const code = `${generateInviteCode(4)}-${generateInviteCode(4)}`;
+
+    const existing = await prisma.gameInvite.findUnique({
+      where: { code },
+      select: { id: true },
+    });
+
+    if (!existing) return code;
+  }
+
+  throw new Error("Не вдалося згенерувати унікальний invite code");
+}
+
 async function requireGameAdmin(request: Request, gameId: string) {
   const currentUser = await getCurrentUser(request);
 
@@ -146,8 +172,7 @@ async function rescoreGameMatch(gameId: string, matchId: string) {
     );
 
     const multiplierUsed = prediction.multiplierUsed ?? 1;
-    const weightedPointsAwarded =
-      pointsAwarded * weightUsed * multiplierUsed;
+    const weightedPointsAwarded = pointsAwarded * weightUsed * multiplierUsed;
 
     await prisma.prediction.update({
       where: { id: prediction.id },
@@ -176,67 +201,77 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     gameId
   );
 
-  const [teams, tournaments, members, gameMatches, rounds] = await Promise.all([
-    prisma.team.findMany({
-      orderBy: { name: "asc" },
-    }),
-    prisma.tournament.findMany({
-      include: {
-        season: true,
-      },
-      orderBy: { name: "asc" },
-    }),
-    prisma.gameMember.findMany({
-      where: {
-        gameId,
-        status: MembershipStatus.ACTIVE,
-      },
-      include: {
-        user: true,
-      },
-      orderBy: {
-        joinedAt: "asc",
-      },
-    }),
-    prisma.gameMatch.findMany({
-      where: {
-        gameId,
-      },
-      include: {
-        match: {
-          include: {
-            tournament: true,
-            round: true,
-            homeTeam: true,
-            awayTeam: true,
-            predictions: {
-              where: {
-                gameId,
-              },
-              include: {
-                user: true,
-              },
-              orderBy: {
-                submittedAt: "desc",
+  const [teams, tournaments, members, gameMatches, rounds, invites] =
+    await Promise.all([
+      prisma.team.findMany({
+        orderBy: { name: "asc" },
+      }),
+      prisma.tournament.findMany({
+        include: {
+          season: true,
+        },
+        orderBy: { name: "asc" },
+      }),
+      prisma.gameMember.findMany({
+        where: {
+          gameId,
+          status: MembershipStatus.ACTIVE,
+        },
+        include: {
+          user: true,
+        },
+        orderBy: {
+          joinedAt: "asc",
+        },
+      }),
+      prisma.gameMatch.findMany({
+        where: {
+          gameId,
+        },
+        include: {
+          match: {
+            include: {
+              tournament: true,
+              round: true,
+              homeTeam: true,
+              awayTeam: true,
+              predictions: {
+                where: {
+                  gameId,
+                },
+                include: {
+                  user: true,
+                },
+                orderBy: {
+                  submittedAt: "desc",
+                },
               },
             },
           },
         },
-      },
-      orderBy: {
-        match: {
-          startTime: "desc",
+        orderBy: {
+          match: {
+            startTime: "desc",
+          },
         },
-      },
-      take: 30,
-    }),
-    prisma.round.findMany({
-      include: {
-        tournament: true,
-      },
-      orderBy: [{ tournamentId: "asc" }, { order: "asc" }],
-    }),
-  ]);
+        take: 30,
+      }),
+      prisma.round.findMany({
+        include: {
+          tournament: true,
+        },
+        orderBy: [{ tournamentId: "asc" }, { order: "asc" }],
+      }),
+      prisma.gameInvite.findMany({
+        where: {
+          gameId,
+          revokedAt: null,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      }),
+    ]);
 
   return data({
     currentUser,
@@ -247,6 +282,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     rounds,
     members,
     gameMatches,
+    invites,
   });
 }
 
@@ -257,10 +293,27 @@ export async function action({ request, params }: ActionFunctionArgs) {
     throw new Response("Game not found", { status: 404 });
   }
 
-  await requireGameAdmin(request, gameId);
+  const { currentUser } = await requireGameAdmin(request, gameId);
 
   const formData = await request.formData();
   const intent = String(formData.get("intent") || "");
+
+  if (intent === "createInvite") {
+    const code = await getUniqueGameInviteCode();
+
+    await prisma.gameInvite.create({
+      data: {
+        gameId,
+        code,
+        createdById: currentUser.id,
+        roleOnJoin: GameMemberRole.MEMBER,
+        maxUses: null,
+        usedCount: 0,
+      },
+    });
+
+    return redirect(`/games/${gameId}/admin`);
+  }
 
   if (intent === "createAndAddMatch") {
     const tournamentId = String(formData.get("tournamentId") || "");
@@ -393,10 +446,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return data({ error: "Матч не знайдено." }, { status: 400 });
     }
 
-    const homeScore =
-      homeScoreRaw === "" ? null : Number(homeScoreRaw);
-    const awayScore =
-      awayScoreRaw === "" ? null : Number(awayScoreRaw);
+    const homeScore = homeScoreRaw === "" ? null : Number(homeScoreRaw);
+    const awayScore = awayScoreRaw === "" ? null : Number(awayScoreRaw);
 
     if (
       (homeScoreRaw !== "" && Number.isNaN(homeScore)) ||
@@ -425,8 +476,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         homeScore,
         awayScore,
         status: statusRaw as MatchStatus,
-        lockedAt:
-          statusRaw === "SCHEDULED" ? null : new Date(),
+        lockedAt: statusRaw === "SCHEDULED" ? null : new Date(),
       },
     });
 
@@ -512,6 +562,7 @@ export default function GameAdminPage() {
     rounds,
     members,
     gameMatches,
+    invites,
   } = useLoaderData<typeof loader>();
 
   const navigation = useNavigation();
@@ -827,95 +878,92 @@ export default function GameAdminPage() {
                         </button>
                       </Form>
 
-                      <Form
-                        method="post"
-                        className="rounded-2xl border border-white/10 bg-white/5 p-4"
-                      >
-                        <input
-                          type="hidden"
-                          name="intent"
-                          value="updateGameMatchSettings"
-                        />
-                        <input
-                          type="hidden"
-                          name="gameMatchId"
-                          value={gameMatch.id}
-                        />
-
-                        <div className="mb-4 text-sm font-semibold text-white/70">
-                          Налаштування матчу в грі
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-3">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <Form method="post">
                           <input
-                            name="customWeight"
-                            type="number"
-                            min="1"
-                            defaultValue={gameMatch.customWeight ?? ""}
-                            placeholder="Вага"
-                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                            type="hidden"
+                            name="intent"
+                            value="updateGameMatchSettings"
+                          />
+                          <input
+                            type="hidden"
+                            name="gameMatchId"
+                            value={gameMatch.id}
                           />
 
-                          <input
-                            name="predictionClosesAt"
-                            type="datetime-local"
-                            defaultValue={
-                              gameMatch.predictionClosesAt
-                                ? new Date(gameMatch.predictionClosesAt)
-                                    .toISOString()
-                                    .slice(0, 16)
-                                : ""
-                            }
-                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
-                          />
+                          <div className="mb-4 text-sm font-semibold text-white/70">
+                            Налаштування матчу в грі
+                          </div>
 
-                          <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75">
+                          <div className="grid grid-cols-1 gap-3">
                             <input
-                              type="checkbox"
-                              name="includeInLeaderboard"
-                              defaultChecked={gameMatch.includeInLeaderboard}
+                              name="customWeight"
+                              type="number"
+                              min="1"
+                              defaultValue={gameMatch.customWeight ?? ""}
+                              placeholder="Вага"
+                              className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
                             />
-                            Включати в таблицю
-                          </label>
 
-                          <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75">
                             <input
-                              type="checkbox"
-                              name="isLocked"
-                              defaultChecked={gameMatch.isLocked}
+                              name="predictionClosesAt"
+                              type="datetime-local"
+                              defaultValue={
+                                gameMatch.predictionClosesAt
+                                  ? new Date(gameMatch.predictionClosesAt)
+                                      .toISOString()
+                                      .slice(0, 16)
+                                  : ""
+                              }
+                              className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
                             />
-                            Locked вручну
-                          </label>
-                        </div>
 
-                        <div className="mt-4 flex flex-wrap gap-3">
+                            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75">
+                              <input
+                                type="checkbox"
+                                name="includeInLeaderboard"
+                                defaultChecked={gameMatch.includeInLeaderboard}
+                              />
+                              Включати в таблицю
+                            </label>
+
+                            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white/75">
+                              <input
+                                type="checkbox"
+                                name="isLocked"
+                                defaultChecked={gameMatch.isLocked}
+                              />
+                              Locked вручну
+                            </label>
+                          </div>
+
                           <button
                             type="submit"
-                            className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90"
+                            className="mt-4 rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90"
                           >
                             Зберегти налаштування
                           </button>
+                        </Form>
 
-                          <Form method="post">
-                            <input
-                              type="hidden"
-                              name="intent"
-                              value="removeMatchFromGame"
-                            />
-                            <input
-                              type="hidden"
-                              name="gameMatchId"
-                              value={gameMatch.id}
-                            />
-                            <button
-                              type="submit"
-                              className="rounded-2xl border border-red-400/20 bg-red-500/10 px-5 py-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/15"
-                            >
-                              Прибрати з гри
-                            </button>
-                          </Form>
-                        </div>
-                      </Form>
+                        <Form method="post" className="mt-3">
+                          <input
+                            type="hidden"
+                            name="intent"
+                            value="removeMatchFromGame"
+                          />
+                          <input
+                            type="hidden"
+                            name="gameMatchId"
+                            value={gameMatch.id}
+                          />
+                          <button
+                            type="submit"
+                            className="rounded-2xl border border-red-400/20 bg-red-500/10 px-5 py-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/15"
+                          >
+                            Прибрати з гри
+                          </button>
+                        </Form>
+                      </div>
                     </div>
 
                     <div className="mt-5 overflow-hidden rounded-[1.25rem] border border-white/10 bg-white/5">
@@ -1025,6 +1073,84 @@ export default function GameAdminPage() {
                   {tournaments.length}
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section className="rounded-[1.75rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-black">Запрошення</h3>
+                <p className="mt-1 text-sm text-white/50">
+                  Код гри та додаткові invite-коди для друзів.
+                </p>
+              </div>
+
+              <Form method="post">
+                <input type="hidden" name="intent" value="createInvite" />
+                <button
+                  type="submit"
+                  className="rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
+                >
+                  + Код
+                </button>
+              </Form>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200/80">
+                  Основний код гри
+                </div>
+                <div className="mt-2 break-all text-2xl font-black tracking-[0.18em] text-emerald-100">
+                  {game.inviteCode}
+                </div>
+                <div className="mt-2 text-sm text-emerald-200/80">
+                  Скинь цей код другу, а він введе його на сторінці join.
+                </div>
+              </div>
+
+              {invites.length > 0 ? (
+                <div className="space-y-3">
+                  {invites.map((invite) => (
+                    <div
+                      key={invite.id}
+                      className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-white/70">
+                            Додатковий invite
+                          </div>
+                          <div className="mt-1 text-lg font-black tracking-[0.14em] text-white">
+                            {invite.code}
+                          </div>
+                        </div>
+
+                        <div className="text-right text-xs text-white/45">
+                          <div>used: {invite.usedCount}</div>
+                          <div>
+                            {invite.maxUses === null
+                              ? "∞ uses"
+                              : `${invite.maxUses} max`}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 text-sm text-white/50">
+                        {invite.expiresAt
+                          ? `Діє до ${new Date(invite.expiresAt).toLocaleString(
+                              "uk-UA"
+                            )}`
+                          : "Без терміну дії"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-4 text-sm text-white/45">
+                  Додаткових invite-кодів ще немає.
+                </div>
+              )}
             </div>
           </section>
         </div>

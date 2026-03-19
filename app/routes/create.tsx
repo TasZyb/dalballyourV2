@@ -298,12 +298,14 @@ export default function CreateGamePage() {
                   Кабінет
                 </Link>
 
-                <Link
-                  to="/logout"
-                  className="inline-flex w-full items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15 sm:w-auto"
-                >
-                  Вийти
-                </Link>
+                <Form method="post" action="/logout">
+                  <button
+                    type="submit"
+                    className="inline-flex w-full items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15 sm:w-auto"
+                  >
+                    Вийти
+                  </button>
+                </Form>
               </>
             ) : (
               <Link

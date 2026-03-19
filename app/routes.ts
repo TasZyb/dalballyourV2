@@ -22,7 +22,6 @@ export default [
     route("members", "routes/game/members.tsx"),
     route("settings", "routes/game/settings.tsx"),
     route("admin", "routes/game/admin.tsx"),
-    
   ]),
   
   route("join", "routes/join.tsx"),

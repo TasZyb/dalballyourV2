@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import {
   Form,
+  Link,
   data,
   redirect,
   useActionData,
@@ -203,6 +204,12 @@ export default function LoginPage() {
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.22),transparent_32%),radial-gradient(circle_at_80%_20%,rgba(16,185,129,0.18),transparent_22%),linear-gradient(to_bottom,#0a0a0a,#111827,#0a0a0a)]" />
 
       <main className="mx-auto flex min-h-screen max-w-xl items-center px-4 py-10">
+        <Link
+          to="/"
+          className="absolute top-6 left-6 text-sm text-white/50 hover:text-white"
+        >
+          ← Назад
+        </Link>
         <div className="w-full rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/30 backdrop-blur-xl sm:p-8">
           <div className="text-xs font-semibold uppercase tracking-[0.3em] text-white/45">
             Match Predictor

@@ -1,6 +1,6 @@
 import { useLoaderData, data, type LoaderFunctionArgs } from "react-router"
 import { prisma } from "~/lib/db.server"
-
+import { Form } from "react-router";
 import Leaderboard from "~/components/Leaderboard"
 import UpcomingMatches from "~/components/UpcomingMatches"
 

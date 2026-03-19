@@ -7,7 +7,7 @@ import {
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 import MatchesSection from "~/components/MatchesSection";
-
+import { Form } from "react-router";
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const currentUser = await getCurrentUser(request);
   const gameId = params.gameId;
