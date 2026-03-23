@@ -127,10 +127,10 @@ export default function LobbyPage() {
   const { currentUser, games, stats } = useLoaderData<typeof loader>();
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-neutral-950 text-white">
+    <div className="relative min-h-screen overflow-x-hidden theme-page">
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.22),transparent_32%),radial-gradient(circle_at_80%_20%,rgba(16,185,129,0.18),transparent_22%),linear-gradient(to_bottom,#0a0a0a,#111827,#0a0a0a)]" />
 
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-neutral-950/70 backdrop-blur-2xl">
+      <header className="sticky top-0 z-30 border-b border-white/10 backdrop-blur-2xl">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5 md:px-6 lg:px-8">
           <div className="min-w-0">
             <div className="text-[10px] font-semibold uppercase tracking-[0.35em] text-white/45 sm:text-xs">

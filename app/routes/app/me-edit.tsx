@@ -73,6 +73,116 @@ export async function action({ request }: ActionFunctionArgs) {
   return redirect("/me");
 }
 
+function PageButton({
+  to,
+  children,
+}: {
+  to: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      to={to}
+      className="inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition"
+      style={{
+        background: "var(--panel)",
+        border: "1px solid var(--border)",
+        color: "var(--text)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = "var(--panel-strong)";
+        e.currentTarget.style.borderColor = "var(--border-strong)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "var(--panel)";
+        e.currentTarget.style.borderColor = "var(--border)";
+      }}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <label
+      className="mb-2 block text-sm font-medium"
+      style={{ color: "var(--text-soft)" }}
+    >
+      {children}
+    </label>
+  );
+}
+
+function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      {...props}
+      className="w-full rounded-2xl px-4 py-3 outline-none transition"
+      style={{
+        background: "var(--panel-solid)",
+        border: "1px solid var(--border)",
+        color: "var(--text)",
+      }}
+      onFocus={(e) => {
+        e.currentTarget.style.borderColor = "var(--border-strong)";
+        e.currentTarget.style.boxShadow =
+          "0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent)";
+      }}
+      onBlur={(e) => {
+        e.currentTarget.style.borderColor = "var(--border)";
+        e.currentTarget.style.boxShadow = "none";
+      }}
+    />
+  );
+}
+
+function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      {...props}
+      className="w-full rounded-2xl px-4 py-3 outline-none transition"
+      style={{
+        background: "var(--panel-solid)",
+        border: "1px solid var(--border)",
+        color: "var(--text)",
+      }}
+      onFocus={(e) => {
+        e.currentTarget.style.borderColor = "var(--border-strong)";
+        e.currentTarget.style.boxShadow =
+          "0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent)";
+      }}
+      onBlur={(e) => {
+        e.currentTarget.style.borderColor = "var(--border)";
+        e.currentTarget.style.boxShadow = "none";
+      }}
+    />
+  );
+}
+
+function SelectInput(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      {...props}
+      className="w-full rounded-2xl px-4 py-3 outline-none transition"
+      style={{
+        background: "var(--panel-solid)",
+        border: "1px solid var(--border)",
+        color: "var(--text)",
+      }}
+      onFocus={(e) => {
+        e.currentTarget.style.borderColor = "var(--border-strong)";
+        e.currentTarget.style.boxShadow =
+          "0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent)";
+      }}
+      onBlur={(e) => {
+        e.currentTarget.style.borderColor = "var(--border)";
+        e.currentTarget.style.boxShadow = "none";
+      }}
+    />
+  );
+}
+
 export default function MeEditPage() {
   const { user, teams } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
@@ -81,123 +191,118 @@ export default function MeEditPage() {
   const isSubmitting = navigation.state === "submitting";
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white">
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.22),transparent_32%),radial-gradient(circle_at_80%_20%,rgba(16,185,129,0.18),transparent_22%),linear-gradient(to_bottom,#0a0a0a,#111827,#0a0a0a)]" />
-
+    <div className="theme-page min-h-screen">
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
         <div className="mb-6 flex flex-wrap gap-3">
-          <Link
-            to="/me"
-            className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-          >
-            ← Назад у кабінет
-          </Link>
-
-          <Link
-            to="/"
-            className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-          >
-            На головну
-          </Link>
+          <PageButton to="/me">← Назад у кабінет</PageButton>
+          <PageButton to="/">На головну</PageButton>
         </div>
 
-        <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/30 backdrop-blur-xl sm:p-8">
-          <div className="text-xs font-semibold uppercase tracking-[0.3em] text-white/45">
+        <div className="theme-panel rounded-[2rem] p-6 sm:p-8">
+          <div
+            className="text-xs font-semibold uppercase tracking-[0.3em]"
+            style={{ color: "var(--muted)" }}
+          >
             Налаштування
           </div>
 
-          <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">
+          <h1
+            className="mt-2 text-3xl font-black tracking-tight sm:text-4xl"
+            style={{ color: "var(--text)" }}
+          >
             Редагувати профіль
           </h1>
 
-          <p className="mt-3 text-sm leading-6 text-white/65 sm:text-base">
+          <p
+            className="mt-3 text-sm leading-6 sm:text-base"
+            style={{ color: "var(--text-soft)" }}
+          >
             Тут можна налаштувати вигляд акаунта, опис і персональні вподобання.
           </p>
 
           {actionData && "error" in actionData && (
-            <div className="mt-5 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            <div
+              className="mt-5 rounded-2xl px-4 py-3 text-sm"
+              style={{
+                background: "color-mix(in srgb, #ef4444 14%, transparent)",
+                color: "#ef4444",
+                border: "1px solid color-mix(in srgb, #ef4444 24%, transparent)",
+              }}
+            >
               {actionData.error}
             </div>
           )}
 
           <Form method="post" className="mt-8 space-y-5">
             <div>
-              <label className="mb-2 block text-sm font-medium text-white/75">
-                Display name
-              </label>
-              <input
+              <FieldLabel>Display name</FieldLabel>
+              <TextInput
                 name="displayName"
                 defaultValue={user.displayName ?? ""}
                 placeholder="Наприклад: TarasThePredictor"
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white placeholder:text-white/35 outline-none focus:border-white/25"
               />
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-white/75">
-                Біо
-              </label>
-              <textarea
+              <FieldLabel>Біо</FieldLabel>
+              <TextArea
                 name="bio"
                 defaultValue={user.bio ?? ""}
                 rows={4}
                 placeholder="Коротко про себе..."
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white placeholder:text-white/35 outline-none focus:border-white/25"
               />
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-white/75">
-                Улюблена команда
-              </label>
-              <select
+              <FieldLabel>Улюблена команда</FieldLabel>
+              <SelectInput
                 name="favoriteTeamId"
                 defaultValue={user.favoriteTeamId ?? ""}
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/25"
               >
-                <option value="" className="text-black">
+                <option value="" style={{ color: "#111" }}>
                   Не вибрано
                 </option>
                 {teams.map((team) => (
-                  <option key={team.id} value={team.id} className="text-black">
+                  <option key={team.id} value={team.id} style={{ color: "#111" }}>
                     {team.name}
                   </option>
                 ))}
-              </select>
+              </SelectInput>
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-white/75">
-                Улюблений колір профілю
-              </label>
-              <input
+              <FieldLabel>Улюблений колір профілю</FieldLabel>
+              <TextInput
                 name="favoriteColor"
                 defaultValue={user.favoriteColor ?? ""}
                 placeholder="Наприклад: emerald / blue / purple"
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white placeholder:text-white/35 outline-none focus:border-white/25"
               />
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-white/75">
-                Banner URL
-              </label>
-              <input
+              <FieldLabel>Banner URL</FieldLabel>
+              <TextInput
                 name="profileBanner"
                 defaultValue={user.profileBanner ?? ""}
                 placeholder="Посилання на банер"
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white placeholder:text-white/35 outline-none focus:border-white/25"
               />
             </div>
 
-            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+            <label
+              className="flex items-center gap-3 rounded-2xl px-4 py-3"
+              style={{
+                background: "var(--panel-solid)",
+                border: "1px solid var(--border)",
+              }}
+            >
               <input
                 name="isProfilePublic"
                 type="checkbox"
                 defaultChecked={user.isProfilePublic}
                 className="h-4 w-4"
+                style={{ accentColor: "var(--accent)" }}
               />
-              <span className="text-sm text-white/80">
+              <span className="text-sm" style={{ color: "var(--text-soft)" }}>
                 Зробити профіль публічним
               </span>
             </label>
@@ -205,7 +310,20 @@ export default function MeEditPage() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90 disabled:opacity-50"
+              className="w-full rounded-2xl px-5 py-3 text-sm font-bold transition disabled:opacity-50"
+              style={{
+                background: "var(--accent)",
+                color: "white",
+                border: "1px solid color-mix(in srgb, var(--accent) 38%, transparent)",
+              }}
+              onMouseEnter={(e) => {
+                if (!isSubmitting) {
+                  e.currentTarget.style.filter = "brightness(1.05)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.filter = "none";
+              }}
             >
               {isSubmitting ? "Збереження..." : "Зберегти зміни"}
             </button>

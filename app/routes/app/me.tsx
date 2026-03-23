@@ -1,6 +1,7 @@
 import { Form, Link, data, useLoaderData, type LoaderFunctionArgs } from "react-router";
 import { prisma } from "~/lib/db.server";
 import { requireUser } from "~/lib/auth.server";
+import ThemeSwitcher from "~/components/ThemeSwitcher";
 
 function getDisplayName(user: {
   name: string | null;
@@ -114,6 +115,97 @@ export async function loader({ request }: LoaderFunctionArgs) {
   });
 }
 
+function ActionLink({
+  to,
+  children,
+  primary = false,
+}: {
+  to: string;
+  children: React.ReactNode;
+  primary?: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      className="inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition"
+      style={
+        primary
+          ? {
+              background: "var(--accent)",
+              color: "#fff",
+              border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)",
+            }
+          : {
+              background: "var(--panel)",
+              color: "var(--text)",
+              border: "1px solid var(--border)",
+            }
+      }
+      onMouseEnter={(e) => {
+        if (primary) {
+          e.currentTarget.style.filter = "brightness(1.05)";
+        } else {
+          e.currentTarget.style.background = "var(--panel-strong)";
+          e.currentTarget.style.borderColor = "var(--border-strong)";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (primary) {
+          e.currentTarget.style.filter = "none";
+        } else {
+          e.currentTarget.style.background = "var(--panel)";
+          e.currentTarget.style.borderColor = "var(--border)";
+        }
+      }}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div
+      className="rounded-2xl p-4"
+      style={{
+        background: "var(--card-highlight)",
+        border: "1px solid var(--border)",
+      }}
+    >
+      <div className="text-xs" style={{ color: "var(--muted)" }}>
+        {label}
+      </div>
+      <div
+        className="mt-2 text-2xl font-black"
+        style={{ color: "var(--text)" }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function InfoPill({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      className="rounded-full px-3 py-1"
+      style={{
+        background: "var(--card-highlight)",
+        border: "1px solid var(--border)",
+        color: "var(--text-soft)",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
 export default function MePage() {
   const {
     user,
@@ -131,39 +223,38 @@ export default function MePage() {
   const displayName = getDisplayName(user);
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white">
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.22),transparent_32%),radial-gradient(circle_at_80%_20%,rgba(16,185,129,0.18),transparent_22%),linear-gradient(to_bottom,#0a0a0a,#111827,#0a0a0a)]" />
-
+    <div className="theme-page min-h-screen">
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-3">
-            <Link
-              to="/"
-              className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-            >
-              ← На головну
-            </Link>
-
-            <Link
-              to="/predict"
-              className="inline-flex items-center justify-center rounded-2xl bg-white px-4 py-3 text-sm font-bold text-black transition hover:opacity-90"
-            >
+            <ActionLink to="/">← На головну</ActionLink>
+            <ActionLink to="/predict" primary>
               Зробити прогноз
-            </Link>
+            </ActionLink>
           </div>
 
+          <ThemeSwitcher />
+
           <div className="flex flex-wrap gap-3">
-            <Link
-              to="/me/edit"
-              className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-            >
-              Редагувати профіль
-            </Link>
+            <ActionLink to="/me/edit">Редагувати профіль</ActionLink>
 
             <Form method="post" action="/logout">
               <button
                 type="submit"
-                className="inline-flex items-center justify-center rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/15"
+                className="inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition"
+                style={{
+                  background: "color-mix(in srgb, #ef4444 12%, transparent)",
+                  color: "#ef4444",
+                  border: "1px solid color-mix(in srgb, #ef4444 24%, transparent)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background =
+                    "color-mix(in srgb, #ef4444 16%, transparent)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background =
+                    "color-mix(in srgb, #ef4444 12%, transparent)";
+                }}
               >
                 Вийти
               </button>
@@ -171,113 +262,149 @@ export default function MePage() {
           </div>
         </div>
 
-        <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/30 backdrop-blur-xl sm:p-8">
+        <section className="theme-panel rounded-[2rem] p-5 sm:p-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-4">
               {user.image ? (
                 <img
                   src={user.image}
                   alt={displayName}
-                  className="h-20 w-20 rounded-full border border-white/10 object-cover"
+                  className="h-20 w-20 rounded-full object-cover"
+                  style={{ border: "1px solid var(--border)" }}
                 />
               ) : (
-                <div className="flex h-20 w-20 items-center justify-center rounded-full border border-white/10 bg-white/10 text-2xl font-black">
+                <div
+                  className="flex h-20 w-20 items-center justify-center rounded-full text-2xl font-black"
+                  style={{
+                    border: "1px solid var(--border)",
+                    background: "var(--card-highlight)",
+                    color: "var(--text)",
+                  }}
+                >
                   {displayName.slice(0, 1).toUpperCase()}
                 </div>
               )}
 
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.3em] text-white/45">
+                <div
+                  className="text-xs font-semibold uppercase tracking-[0.3em]"
+                  style={{ color: "var(--muted)" }}
+                >
                   Особистий кабінет
                 </div>
-                <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">
+
+                <h1
+                  className="mt-2 text-3xl font-black tracking-tight sm:text-4xl"
+                  style={{ color: "var(--text)" }}
+                >
                   {displayName}
                 </h1>
-                <p className="mt-2 text-sm text-white/60">{user.email}</p>
+
+                <p className="mt-2 text-sm" style={{ color: "var(--text-soft)" }}>
+                  {user.email}
+                </p>
 
                 {user.bio && (
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-white/75">
+                  <p
+                    className="mt-3 max-w-2xl text-sm leading-6"
+                    style={{ color: "var(--text-soft)" }}
+                  >
                     {user.bio}
                   </p>
                 )}
 
-                <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/65">
-                  <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1">
-                    Роль: {user.role}
-                  </span>
+                <div
+                  className="mt-3 flex flex-wrap gap-2 text-xs"
+                  style={{ color: "var(--text-soft)" }}
+                >
+                  <InfoPill>Роль: {user.role}</InfoPill>
 
                   {user.favoriteTeam && (
-                    <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1">
-                      Улюблена команда: {user.favoriteTeam.name}
-                    </span>
+                    <InfoPill>Улюблена команда: {user.favoriteTeam.name}</InfoPill>
                   )}
 
-                  <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1">
+                  <InfoPill>
                     Профіль: {user.isProfilePublic ? "Публічний" : "Приватний"}
-                  </span>
+                  </InfoPill>
                 </div>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <div className="text-xs text-white/50">Місце</div>
-                <div className="mt-2 text-2xl font-black">
-                  {place ? `#${place}` : "—"}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <div className="text-xs text-white/50">Очки</div>
-                <div className="mt-2 text-2xl font-black">{totalPoints}</div>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <div className="text-xs text-white/50">Прогнози</div>
-                <div className="mt-2 text-2xl font-black">{predictionsCount}</div>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                <div className="text-xs text-white/50">Сер. бал</div>
-                <div className="mt-2 text-2xl font-black">{averagePoints}</div>
-              </div>
+              <StatCard label="Місце" value={place ? `#${place}` : "—"} />
+              <StatCard label="Очки" value={totalPoints} />
+              <StatCard label="Прогнози" value={predictionsCount} />
+              <StatCard label="Сер. бал" value={averagePoints} />
             </div>
           </div>
         </section>
 
         <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-            <div className="text-sm text-white/55">Точні рахунки</div>
-            <div className="mt-2 text-3xl font-black">{exactHits}</div>
+          <div className="theme-panel rounded-[1.5rem] p-5">
+            <div className="text-sm" style={{ color: "var(--text-soft)" }}>
+              Точні рахунки
+            </div>
+            <div
+              className="mt-2 text-3xl font-black"
+              style={{ color: "var(--text)" }}
+            >
+              {exactHits}
+            </div>
           </div>
 
-          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-            <div className="text-sm text-white/55">Вгадані результати</div>
-            <div className="mt-2 text-3xl font-black">{correctResults}</div>
+          <div className="theme-panel rounded-[1.5rem] p-5">
+            <div className="text-sm" style={{ color: "var(--text-soft)" }}>
+              Вгадані результати
+            </div>
+            <div
+              className="mt-2 text-3xl font-black"
+              style={{ color: "var(--text)" }}
+            >
+              {correctResults}
+            </div>
           </div>
 
-          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-            <div className="text-sm text-white/55">Колір профілю</div>
-            <div className="mt-2 text-lg font-bold">
+          <div className="theme-panel rounded-[1.5rem] p-5">
+            <div className="text-sm" style={{ color: "var(--text-soft)" }}>
+              Колір профілю
+            </div>
+            <div
+              className="mt-2 text-lg font-bold"
+              style={{ color: "var(--text)" }}
+            >
               {user.favoriteColor || "Не вибрано"}
             </div>
           </div>
 
-          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-            <div className="text-sm text-white/55">З нами з</div>
-            <div className="mt-2 text-lg font-bold">
+          <div className="theme-panel rounded-[1.5rem] p-5">
+            <div className="text-sm" style={{ color: "var(--text-soft)" }}>
+              З нами з
+            </div>
+            <div
+              className="mt-2 text-lg font-bold"
+              style={{ color: "var(--text)" }}
+            >
               {new Date(user.createdAt).toLocaleDateString("uk-UA")}
             </div>
           </div>
         </section>
 
         <section className="mt-6 grid gap-6 lg:grid-cols-2">
-          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6">
+          <div className="theme-panel rounded-[2rem] p-5 sm:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-xl font-black">Останні прогнози</h2>
+              <h2 className="text-xl font-black" style={{ color: "var(--text)" }}>
+                Останні прогнози
+              </h2>
               <Link
                 to="/me/history"
-                className="text-sm font-semibold text-white/70 hover:text-white"
+                className="text-sm font-semibold transition"
+                style={{ color: "var(--text-soft)" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "var(--text)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "var(--text-soft)";
+                }}
               >
                 Вся історія
               </Link>
@@ -288,45 +415,77 @@ export default function MePage() {
                 recentPredictions.map((prediction) => (
                   <div
                     key={prediction.id}
-                    className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                    className="rounded-2xl p-4"
+                    style={{
+                      background: "var(--card-highlight)",
+                      border: "1px solid var(--border)",
+                    }}
                   >
-                    <div className="text-xs uppercase tracking-[0.2em] text-white/40">
+                    <div
+                      className="text-xs uppercase tracking-[0.2em]"
+                      style={{ color: "var(--muted)" }}
+                    >
                       {prediction.match.tournament.name}
                       {prediction.match.round
                         ? ` · ${prediction.match.round.name}`
                         : ""}
                     </div>
 
-                    <div className="mt-2 text-lg font-black">
+                    <div
+                      className="mt-2 text-lg font-black"
+                      style={{ color: "var(--text)" }}
+                    >
                       {prediction.match.homeTeam.name}{" "}
-                      <span className="text-white/35">vs</span>{" "}
+                      <span style={{ color: "var(--muted)" }}>vs</span>{" "}
                       {prediction.match.awayTeam.name}
                     </div>
 
-                    <div className="mt-2 text-sm text-white/65">
+                    <div
+                      className="mt-2 text-sm"
+                      style={{ color: "var(--text-soft)" }}
+                    >
                       Твій прогноз: {prediction.predictedHome} :{" "}
                       {prediction.predictedAway}
                     </div>
 
-                    <div className="mt-2 text-sm text-white/50">
+                    <div
+                      className="mt-2 text-sm"
+                      style={{ color: "var(--muted)" }}
+                    >
                       Очки: {prediction.pointsAwarded}
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-4 text-sm text-white/60">
+                <div
+                  className="rounded-2xl border border-dashed p-4 text-sm"
+                  style={{
+                    background: "var(--card-highlight)",
+                    borderColor: "var(--border)",
+                    color: "var(--text-soft)",
+                  }}
+                >
                   У тебе ще немає прогнозів.
                 </div>
               )}
             </div>
           </div>
 
-          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6">
+          <div className="theme-panel rounded-[2rem] p-5 sm:p-6">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-xl font-black">Найближчі матчі</h2>
+              <h2 className="text-xl font-black" style={{ color: "var(--text)" }}>
+                Найближчі матчі
+              </h2>
               <Link
                 to="/predict"
-                className="text-sm font-semibold text-white/70 hover:text-white"
+                className="text-sm font-semibold transition"
+                style={{ color: "var(--text-soft)" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = "var(--text)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = "var(--text-soft)";
+                }}
               >
                 До прогнозів
               </Link>
@@ -337,25 +496,46 @@ export default function MePage() {
                 upcomingMatches.map((match) => (
                   <div
                     key={match.id}
-                    className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                    className="rounded-2xl p-4"
+                    style={{
+                      background: "var(--card-highlight)",
+                      border: "1px solid var(--border)",
+                    }}
                   >
-                    <div className="text-xs uppercase tracking-[0.2em] text-white/40">
+                    <div
+                      className="text-xs uppercase tracking-[0.2em]"
+                      style={{ color: "var(--muted)" }}
+                    >
                       {match.tournament.name}
                       {match.round ? ` · ${match.round.name}` : ""}
                     </div>
 
-                    <div className="mt-2 text-lg font-black">
-                      {match.homeTeam.name} <span className="text-white/35">vs</span>{" "}
+                    <div
+                      className="mt-2 text-lg font-black"
+                      style={{ color: "var(--text)" }}
+                    >
+                      {match.homeTeam.name}{" "}
+                      <span style={{ color: "var(--muted)" }}>vs</span>{" "}
                       {match.awayTeam.name}
                     </div>
 
-                    <div className="mt-2 text-sm text-white/60">
+                    <div
+                      className="mt-2 text-sm"
+                      style={{ color: "var(--text-soft)" }}
+                    >
                       {new Date(match.startTime).toLocaleString("uk-UA")}
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-4 text-sm text-white/60">
+                <div
+                  className="rounded-2xl border border-dashed p-4 text-sm"
+                  style={{
+                    background: "var(--card-highlight)",
+                    borderColor: "var(--border)",
+                    color: "var(--text-soft)",
+                  }}
+                >
                   Найближчих матчів зараз немає.
                 </div>
               )}
@@ -363,12 +543,21 @@ export default function MePage() {
           </div>
         </section>
 
-        <section className="mt-6 rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6">
+        <section className="theme-panel mt-6 rounded-[2rem] p-5 sm:p-6">
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-xl font-black">Міні-рейтинг</h2>
+            <h2 className="text-xl font-black" style={{ color: "var(--text)" }}>
+              Міні-рейтинг
+            </h2>
             <Link
               to="/me/stats"
-              className="text-sm font-semibold text-white/70 hover:text-white"
+              className="text-sm font-semibold transition"
+              style={{ color: "var(--text-soft)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "var(--text)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "var(--text-soft)";
+              }}
             >
               Детальна статистика
             </Link>
@@ -378,12 +567,18 @@ export default function MePage() {
             {leaderboard.map((player, index) => (
               <div
                 key={player.id}
-                className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 px-4 py-3"
+                className="flex items-center justify-between rounded-2xl px-4 py-3"
+                style={{
+                  background: "var(--card-highlight)",
+                  border: "1px solid var(--border)",
+                }}
               >
-                <div className="font-semibold">
+                <div className="font-semibold" style={{ color: "var(--text)" }}>
                   #{index + 1} · {player.name}
                 </div>
-                <div className="text-white/70">{player.totalPoints} pts</div>
+                <div style={{ color: "var(--text-soft)" }}>
+                  {player.totalPoints} pts
+                </div>
               </div>
             ))}
           </div>

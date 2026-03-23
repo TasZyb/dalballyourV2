@@ -23,16 +23,29 @@ export const links: Route.LinksFunction = () => [
   },
 ];
 
+const themeInitScript = `
+(function () {
+  try {
+    var savedTheme = localStorage.getItem("site-theme");
+    var theme = savedTheme || "ucl";
+    document.documentElement.setAttribute("data-theme", theme);
+  } catch (e) {
+    document.documentElement.setAttribute("data-theme", "ucl");
+  }
+})();
+`;
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="ucl">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body>
+      <body className="theme-page">
         {children}
         <ScrollRestoration />
         <Scripts />
@@ -62,14 +75,17 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   }
 
   return (
-    <main className="pt-16 p-4 container mx-auto">
-      <h1>{message}</h1>
-      <p>{details}</p>
-      {stack && (
-        <pre className="w-full p-4 overflow-x-auto">
-          <code>{stack}</code>
-        </pre>
-      )}
+    <main className="container mx-auto p-4 pt-16">
+      <div className="theme-panel rounded-3xl p-6">
+        <h1 className="text-2xl font-black">{message}</h1>
+        <p className="theme-text-soft mt-2">{details}</p>
+
+        {stack && (
+          <pre className="mt-4 w-full overflow-x-auto rounded-2xl border p-4 text-sm">
+            <code>{stack}</code>
+          </pre>
+        )}
+      </div>
     </main>
   );
 }

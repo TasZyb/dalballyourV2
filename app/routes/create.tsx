@@ -257,15 +257,206 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[1.75rem] border border-white/10 bg-neutral-900/60 p-5 backdrop-blur-xl sm:rounded-[2rem] sm:p-7">
+    <section className="theme-panel rounded-[1.75rem] p-5 sm:rounded-[2rem] sm:p-7">
       <div className="mb-6">
-        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
+        <div
+          className="text-xs font-semibold uppercase tracking-[0.18em]"
+          style={{ color: "var(--muted)" }}
+        >
           {eyebrow}
         </div>
-        <h2 className="mt-2 text-2xl font-black text-white">{title}</h2>
+        <h2
+          className="mt-2 text-2xl font-black"
+          style={{ color: "var(--text)" }}
+        >
+          {title}
+        </h2>
       </div>
       {children}
     </section>
+  );
+}
+
+function GhostButton({
+  to,
+  children,
+}: {
+  to: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      to={to}
+      className="inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition"
+      style={{
+        background: "var(--panel)",
+        border: "1px solid var(--border)",
+        color: "var(--text)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = "var(--panel-strong)";
+        e.currentTarget.style.borderColor = "var(--border-strong)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "var(--panel)";
+        e.currentTarget.style.borderColor = "var(--border)";
+      }}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function NeutralButton({
+  children,
+  type = "button",
+}: {
+  children: React.ReactNode;
+  type?: "button" | "submit";
+}) {
+  return (
+    <button
+      type={type}
+      className="inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition"
+      style={{
+        background: "var(--panel)",
+        border: "1px solid var(--border)",
+        color: "var(--text)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = "var(--panel-strong)";
+        e.currentTarget.style.borderColor = "var(--border-strong)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "var(--panel)";
+        e.currentTarget.style.borderColor = "var(--border)";
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function PrimaryButton({
+  children,
+  type = "button",
+}: {
+  children: React.ReactNode;
+  type?: "button" | "submit";
+}) {
+  return (
+    <button
+      type={type}
+      className="inline-flex items-center justify-center rounded-2xl px-6 py-3 text-sm font-bold transition"
+      style={{
+        background: "var(--accent)",
+        color: "#fff",
+        border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.filter = "brightness(1.05)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.filter = "none";
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <label
+      className="mb-2 block text-sm font-medium"
+      style={{ color: "var(--text-soft)" }}
+    >
+      {children}
+    </label>
+  );
+}
+
+function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      {...props}
+      className="w-full rounded-2xl px-4 py-4 text-base outline-none transition"
+      style={{
+        background: "var(--panel-solid)",
+        border: "1px solid var(--border)",
+        color: "var(--text)",
+      }}
+      onFocus={(e) => {
+        e.currentTarget.style.borderColor = "var(--border-strong)";
+        e.currentTarget.style.boxShadow =
+          "0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent)";
+      }}
+      onBlur={(e) => {
+        e.currentTarget.style.borderColor = "var(--border)";
+        e.currentTarget.style.boxShadow = "none";
+      }}
+    />
+  );
+}
+
+function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      {...props}
+      className="w-full resize-none rounded-2xl px-4 py-4 text-sm outline-none transition"
+      style={{
+        background: "var(--panel-solid)",
+        border: "1px solid var(--border)",
+        color: "var(--text)",
+      }}
+      onFocus={(e) => {
+        e.currentTarget.style.borderColor = "var(--border-strong)";
+        e.currentTarget.style.boxShadow =
+          "0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent)";
+      }}
+      onBlur={(e) => {
+        e.currentTarget.style.borderColor = "var(--border)";
+        e.currentTarget.style.boxShadow = "none";
+      }}
+    />
+  );
+}
+
+function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      {...props}
+      className="w-full rounded-2xl px-4 py-4 outline-none transition"
+      style={{
+        background: "var(--panel-solid)",
+        border: "1px solid var(--border)",
+        color: "var(--text)",
+      }}
+      onFocus={(e) => {
+        e.currentTarget.style.borderColor = "var(--border-strong)";
+        e.currentTarget.style.boxShadow =
+          "0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent)";
+      }}
+      onBlur={(e) => {
+        e.currentTarget.style.borderColor = "var(--border)";
+        e.currentTarget.style.boxShadow = "none";
+      }}
+    />
+  );
+}
+
+function MutedBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="rounded-2xl p-4 text-sm leading-6"
+      style={{
+        background: "var(--card-highlight)",
+        border: "1px solid var(--border)",
+        color: "var(--text-soft)",
+      }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -275,15 +466,37 @@ export default function CreateGamePage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-neutral-950 text-white space-y-3">
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.22),transparent_32%),radial-gradient(circle_at_80%_20%,rgba(16,185,129,0.18),transparent_22%),linear-gradient(to_bottom,#0a0a0a,#111827,#0a0a0a)]" />
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-neutral-950/70 backdrop-blur-2xl">
+    <div className="theme-page relative min-h-screen overflow-x-hidden space-y-3">
+      <div
+        className="absolute inset-0 -z-10"
+        style={{
+          background: `
+            radial-gradient(circle at top, var(--hero-glow), transparent 32%),
+            radial-gradient(circle at 80% 20%, var(--hero-glow-2), transparent 22%),
+            linear-gradient(to bottom, var(--bg-gradient-start), var(--bg-gradient-mid), var(--bg-gradient-end))
+          `,
+        }}
+      />
+
+      <header
+        className="sticky top-0 z-30 backdrop-blur-2xl"
+        style={{
+          borderBottom: "1px solid var(--border)",
+          background: "color-mix(in srgb, var(--bg) 78%, transparent)",
+        }}
+      >
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5 md:px-6 lg:px-8">
           <div className="min-w-0">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.35em] text-white/45 sm:text-xs">
+            <div
+              className="text-[10px] font-semibold uppercase tracking-[0.35em] sm:text-xs"
+              style={{ color: "var(--muted)" }}
+            >
               Match Predictor League
             </div>
-            <h1 className="mt-1 pr-2 text-xl font-black tracking-tight sm:text-2xl md:text-3xl">
+            <h1
+              className="mt-1 pr-2 text-xl font-black tracking-tight sm:text-2xl md:text-3xl"
+              style={{ color: "var(--text)" }}
+            >
               Lobby
             </h1>
           </div>
@@ -291,26 +504,28 @@ export default function CreateGamePage() {
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             {currentUser ? (
               <>
-                <Link
-                  to="/me"
-                  className="inline-flex w-full items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15 sm:w-auto"
-                >
-                  Кабінет
-                </Link>
+                <GhostButton to="/me">Кабінет</GhostButton>
 
                 <Form method="post" action="/logout">
-                  <button
-                    type="submit"
-                    className="inline-flex w-full items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15 sm:w-auto"
-                  >
-                    Вийти
-                  </button>
+                  <NeutralButton type="submit">Вийти</NeutralButton>
                 </Form>
               </>
             ) : (
               <Link
                 to="/login"
-                className="inline-flex w-full items-center justify-center rounded-2xl bg-white px-4 py-3 text-sm font-bold text-black transition hover:opacity-90 sm:w-auto"
+                className="inline-flex w-full items-center justify-center rounded-2xl px-4 py-3 text-sm font-bold transition sm:w-auto"
+                style={{
+                  background: "var(--accent)",
+                  color: "#fff",
+                  border:
+                    "1px solid color-mix(in srgb, var(--accent) 35%, transparent)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.filter = "brightness(1.05)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.filter = "none";
+                }}
               >
                 Увійти через Google
               </Link>
@@ -318,30 +533,35 @@ export default function CreateGamePage() {
           </div>
         </div>
       </header>
+
       <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-5 md:px-6 lg:px-8">
-        <section className="rounded-[1.75rem] border border-white/10 bg-neutral-900/60 p-6 shadow-2xl shadow-black/30 backdrop-blur-xl sm:rounded-[2rem] sm:p-7 md:p-9">
+        <section className="theme-panel rounded-[1.75rem] p-6 sm:rounded-[2rem] sm:p-7 md:p-9">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.32em] text-white/40">
+              <div
+                className="text-[11px] font-semibold uppercase tracking-[0.32em]"
+                style={{ color: "var(--muted)" }}
+              >
                 Create Game
               </div>
 
-              <h1 className="mt-3 text-3xl font-black tracking-tight text-white sm:text-4xl md:text-5xl">
+              <h1
+                className="mt-3 text-3xl font-black tracking-tight sm:text-4xl md:text-5xl"
+                style={{ color: "var(--text)" }}
+              >
                 Створи нову гру
               </h1>
 
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-white/60 sm:text-base sm:leading-7">
+              <p
+                className="mt-4 max-w-2xl text-sm leading-6 sm:text-base sm:leading-7"
+                style={{ color: "var(--text-soft)" }}
+              >
                 Створи свою лігу за кілька кроків. Основне — зверху. Додаткові
                 правила можна відкрити окремо.
               </p>
             </div>
 
-            <Link
-              to="/"
-              className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-            >
-              ← Назад у lobby
-            </Link>
+            <GhostButton to="/">← Назад у lobby</GhostButton>
           </div>
         </section>
 
@@ -350,64 +570,62 @@ export default function CreateGamePage() {
             <SectionCard eyebrow="Швидкий старт" title="Основне">
               <div className="space-y-5">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-white/75">
-                    Назва гри
-                  </label>
-                  <input
+                  <FieldLabel>Назва гри</FieldLabel>
+                  <Input
                     name="name"
                     type="text"
                     placeholder="Наприклад: Friends League"
-                    className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 text-base text-white outline-none placeholder:text-white/30 transition focus:border-white/20"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-white/75">
-                    Короткий опис
-                  </label>
-                  <textarea
+                  <FieldLabel>Короткий опис</FieldLabel>
+                  <Textarea
                     name="description"
                     rows={3}
                     placeholder="Коротко про гру, формат або для кого вона"
-                    className="w-full resize-none rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 text-sm text-white outline-none placeholder:text-white/30 transition focus:border-white/20"
                   />
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-white/75">
-                      Видимість
-                    </label>
-                    <select
+                    <FieldLabel>Видимість</FieldLabel>
+                    <Select
                       name="visibility"
                       defaultValue={defaults.visibility}
-                      className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 text-white outline-none transition focus:border-white/20"
                     >
-                      <option value="PRIVATE">Приватна</option>
-                      <option value="UNLISTED">За посиланням</option>
-                      <option value="PUBLIC">Публічна</option>
-                    </select>
+                      <option value="PRIVATE" style={{ color: "#111" }}>
+                        Приватна
+                      </option>
+                      <option value="UNLISTED" style={{ color: "#111" }}>
+                        За посиланням
+                      </option>
+                      <option value="PUBLIC" style={{ color: "#111" }}>
+                        Публічна
+                      </option>
+                    </Select>
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium text-white/75">
-                      Турнір
-                    </label>
-                    <select
-                      name="linkedTournamentId"
-                      className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 text-white outline-none transition focus:border-white/20"
-                    >
-                      <option value="">Без привʼязки</option>
+                    <FieldLabel>Турнір</FieldLabel>
+                    <Select name="linkedTournamentId">
+                      <option value="" style={{ color: "#111" }}>
+                        Без привʼязки
+                      </option>
                       {tournaments.map((tournament) => (
-                        <option key={tournament.id} value={tournament.id}>
+                        <option
+                          key={tournament.id}
+                          value={tournament.id}
+                          style={{ color: "#111" }}
+                        >
                           {tournament.name}
                           {tournament.season?.yearLabel
                             ? ` (${tournament.season.yearLabel})`
                             : ""}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 </div>
               </div>
@@ -417,18 +635,39 @@ export default function CreateGamePage() {
               <button
                 type="button"
                 onClick={() => setShowAdvanced((prev) => !prev)}
-                className="flex w-full items-center justify-between rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 text-left transition hover:border-white/20 hover:bg-neutral-800"
+                className="flex w-full items-center justify-between rounded-2xl px-4 py-4 text-left transition"
+                style={{
+                  background: "var(--panel-solid)",
+                  border: "1px solid var(--border)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "var(--border-strong)";
+                  e.currentTarget.style.background = "var(--panel-strong)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "var(--border)";
+                  e.currentTarget.style.background = "var(--panel-solid)";
+                }}
               >
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
+                  <div
+                    className="text-xs font-semibold uppercase tracking-[0.18em]"
+                    style={{ color: "var(--muted)" }}
+                  >
                     Розширені параметри
                   </div>
-                  <div className="mt-1 text-lg font-black text-white">
+                  <div
+                    className="mt-1 text-lg font-black"
+                    style={{ color: "var(--text)" }}
+                  >
                     Система балів і поведінка гри
                   </div>
                 </div>
 
-                <div className="text-sm font-semibold text-white/60">
+                <div
+                  className="text-sm font-semibold"
+                  style={{ color: "var(--text-soft)" }}
+                >
                   {showAdvanced ? "Сховати" : "Показати"}
                 </div>
               </button>
@@ -436,100 +675,107 @@ export default function CreateGamePage() {
               {showAdvanced ? (
                 <div className="mt-5 space-y-6">
                   <div>
-                    <div className="mb-3 text-sm font-medium text-white/75">
+                    <div
+                      className="mb-3 text-sm font-medium"
+                      style={{ color: "var(--text-soft)" }}
+                    >
                       Система балів
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-4">
                       <div>
-                        <label className="mb-2 block text-sm text-white/55">
-                          Exact
-                        </label>
-                        <input
+                        <FieldLabel>Exact</FieldLabel>
+                        <Input
                           name="scoringExact"
                           type="number"
                           min="0"
                           defaultValue={defaults.scoringExact}
-                          className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 text-white outline-none transition focus:border-white/20"
                         />
                       </div>
 
                       <div>
-                        <label className="mb-2 block text-sm text-white/55">
-                          Outcome
-                        </label>
-                        <input
+                        <FieldLabel>Outcome</FieldLabel>
+                        <Input
                           name="scoringOutcome"
                           type="number"
                           min="0"
                           defaultValue={defaults.scoringOutcome}
-                          className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 text-white outline-none transition focus:border-white/20"
                         />
                       </div>
 
                       <div>
-                        <label className="mb-2 block text-sm text-white/55">
-                          Wrong
-                        </label>
-                        <input
+                        <FieldLabel>Wrong</FieldLabel>
+                        <Input
                           name="scoringWrong"
                           type="number"
                           min="0"
                           defaultValue={defaults.scoringWrong}
-                          className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 text-white outline-none transition focus:border-white/20"
                         />
                       </div>
 
                       <div>
-                        <label className="mb-2 block text-sm text-white/55">
-                          Lock, хв
-                        </label>
-                        <input
+                        <FieldLabel>Lock, хв</FieldLabel>
+                        <Input
                           name="lockMinutesBeforeStart"
                           type="number"
                           min="0"
                           defaultValue={defaults.lockMinutesBeforeStart}
-                          className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 text-white outline-none transition focus:border-white/20"
                         />
                       </div>
                     </div>
                   </div>
 
                   <div>
-                    <div className="mb-3 text-sm font-medium text-white/75">
+                    <div
+                      className="mb-3 text-sm font-medium"
+                      style={{ color: "var(--text-soft)" }}
+                    >
                       Системні параметри
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
                       <div>
-                        <label className="mb-2 block text-sm text-white/55">
-                          Таймзона
-                        </label>
-                        <input
+                        <FieldLabel>Таймзона</FieldLabel>
+                        <Input
                           name="timezone"
                           type="text"
                           defaultValue={defaults.timezone}
-                          className="w-full rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 text-white outline-none transition focus:border-white/20"
                         />
                       </div>
                     </div>
                   </div>
 
                   <div className="grid gap-3">
-                    <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 text-sm text-white/75">
+                    <label
+                      className="flex items-center gap-3 rounded-2xl px-4 py-4 text-sm"
+                      style={{
+                        background: "var(--panel-solid)",
+                        border: "1px solid var(--border)",
+                        color: "var(--text-soft)",
+                      }}
+                    >
                       <input
                         type="checkbox"
                         name="allowJoinByCode"
                         defaultChecked={defaults.allowJoinByCode}
+                        style={{ accentColor: "var(--accent)" }}
                       />
                       Дозволити приєднання по invite code
                     </label>
 
-                    <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-neutral-900 px-4 py-4 text-sm text-white/75">
+                    <label
+                      className="flex items-center gap-3 rounded-2xl px-4 py-4 text-sm"
+                      style={{
+                        background: "var(--panel-solid)",
+                        border: "1px solid var(--border)",
+                        color: "var(--text-soft)",
+                      }}
+                    >
                       <input
                         type="checkbox"
                         name="allowMemberPredictionsEdit"
                         defaultChecked={defaults.allowMemberPredictionsEdit}
+                        style={{ accentColor: "var(--accent)" }}
                       />
                       Дозволити редагування прогнозу до дедлайну
                     </label>
@@ -576,66 +822,82 @@ export default function CreateGamePage() {
               )}
             </SectionCard>
 
-            <section className="rounded-[1.75rem] border border-white/10 bg-neutral-900/60 p-5 backdrop-blur-xl sm:rounded-[2rem] sm:p-7">
+            <section className="theme-panel rounded-[1.75rem] p-5 sm:rounded-[2rem] sm:p-7">
               {actionData?.error ? (
-                <div className="mb-5 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                <div
+                  className="mb-5 rounded-2xl px-4 py-3 text-sm"
+                  style={{
+                    background: "color-mix(in srgb, #ef4444 12%, transparent)",
+                    color: "#ef4444",
+                    border:
+                      "1px solid color-mix(in srgb, #ef4444 24%, transparent)",
+                  }}
+                >
                   {actionData.error}
                 </div>
               ) : null}
 
               <div className="flex flex-wrap gap-3">
-                <button
-                  type="submit"
-                  className="inline-flex items-center justify-center rounded-2xl bg-white px-6 py-3 text-sm font-bold text-black transition hover:opacity-90"
-                >
-                  Створити гру
-                </button>
-
-                <Link
-                  to="/"
-                  className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-                >
-                  Скасувати
-                </Link>
+                <PrimaryButton type="submit">Створити гру</PrimaryButton>
+                <GhostButton to="/">Скасувати</GhostButton>
               </div>
             </section>
           </Form>
 
           <div className="space-y-6">
-            <section className="rounded-[1.75rem] border border-white/10 bg-neutral-900/60 p-5 backdrop-blur-xl sm:rounded-[2rem]">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
+            <section className="theme-panel rounded-[1.75rem] p-5 sm:rounded-[2rem]">
+              <div
+                className="text-xs font-semibold uppercase tracking-[0.18em]"
+                style={{ color: "var(--muted)" }}
+              >
                 Після створення
               </div>
-              <h3 className="mt-2 text-xl font-black text-white">
+              <h3
+                className="mt-2 text-xl font-black"
+                style={{ color: "var(--text)" }}
+              >
                 Що буде далі
               </h3>
 
               <div className="mt-5 space-y-3">
-                <div className="rounded-2xl border border-white/10 bg-neutral-900 p-4 text-sm leading-6 text-white/60">
+                <MutedBox>
                   Ти автоматично станеш{" "}
-                  <span className="font-semibold text-white">owner</span>.
-                </div>
+                  <span style={{ color: "var(--text)", fontWeight: 600 }}>
+                    owner
+                  </span>.
+                </MutedBox>
 
-                <div className="rounded-2xl border border-white/10 bg-neutral-900 p-4 text-sm leading-6 text-white/60">
+                <MutedBox>
                   Для гри згенерується{" "}
-                  <span className="font-semibold text-white">invite code</span>.
-                </div>
+                  <span style={{ color: "var(--text)", fontWeight: 600 }}>
+                    invite code
+                  </span>.
+                </MutedBox>
 
-                <div className="rounded-2xl border border-white/10 bg-neutral-900 p-4 text-sm leading-6 text-white/60">
+                <MutedBox>
                   Після створення ти одразу потрапиш у нову гру.
-                </div>
+                </MutedBox>
               </div>
             </section>
 
-            <section className="rounded-[1.75rem] border border-white/10 bg-neutral-900/60 p-5 backdrop-blur-xl sm:rounded-[2rem]">
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
+            <section className="theme-panel rounded-[1.75rem] p-5 sm:rounded-[2rem]">
+              <div
+                className="text-xs font-semibold uppercase tracking-[0.18em]"
+                style={{ color: "var(--muted)" }}
+              >
                 Рекомендація
               </div>
-              <h3 className="mt-2 text-xl font-black text-white">
+              <h3
+                className="mt-2 text-xl font-black"
+                style={{ color: "var(--text)" }}
+              >
                 Для старту цього достатньо
               </h3>
 
-              <p className="mt-4 text-sm leading-6 text-white/60">
+              <p
+                className="mt-4 text-sm leading-6"
+                style={{ color: "var(--text-soft)" }}
+              >
                 Спочатку створи гру з базовими параметрами. Далі вже в адмінці
                 зможеш додавати матчі, міняти вагу, дедлайни та інші правила.
               </p>
@@ -643,7 +905,6 @@ export default function CreateGamePage() {
           </div>
         </div>
       </div>
-
     </div>
   );
 }

@@ -109,7 +109,7 @@ export default function MeStatsPage() {
   } = useLoaderData<typeof loader>();
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-white">
+    <div className="min-h-screen theme-page">
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.22),transparent_32%),radial-gradient(circle_at_80%_20%,rgba(16,185,129,0.18),transparent_22%),linear-gradient(to_bottom,#0a0a0a,#111827,#0a0a0a)]" />
 
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">

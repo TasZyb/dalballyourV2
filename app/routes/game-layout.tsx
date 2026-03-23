@@ -5,8 +5,8 @@ import {
   data,
   redirect,
   type LoaderFunctionArgs,
+  useLocation,
 } from "react-router";
-import { Form } from "react-router";
 
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
@@ -45,77 +45,179 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   });
 }
 
+function ShellLink({
+  to,
+  children,
+  active = false,
+  accent = false,
+}: {
+  to: string;
+  children: React.ReactNode;
+  active?: boolean;
+  accent?: boolean;
+}) {
+  const baseStyle: React.CSSProperties = active
+    ? {
+        background: "var(--accent-soft)",
+        color: "var(--accent)",
+        border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)",
+      }
+    : accent
+    ? {
+        background: "color-mix(in srgb, var(--success-soft) 100%, transparent)",
+        color: "var(--success)",
+        border: "1px solid color-mix(in srgb, var(--success) 28%, transparent)",
+      }
+    : {
+        color: "var(--text-soft)",
+        border: "1px solid transparent",
+      };
+
+  return (
+    <Link
+      to={to}
+      className="rounded-xl px-3 py-2 text-sm font-medium transition"
+      style={baseStyle}
+      onMouseEnter={(e) => {
+        if (!active && !accent) {
+          e.currentTarget.style.background = "var(--card-highlight)";
+          e.currentTarget.style.color = "var(--text)";
+          e.currentTarget.style.borderColor = "var(--border)";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active && !accent) {
+          e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.color = "var(--text-soft)";
+          e.currentTarget.style.borderColor = "transparent";
+        }
+      }}
+    >
+      {children}
+    </Link>
+  );
+}
+
 export default function GameLayout() {
   const { user, game, role } = useLoaderData<typeof loader>();
+  const location = useLocation();
 
   const canManageGame = role === "OWNER" || role === "ADMIN";
 
-  return (
-    <div className="relative min-h-screen overflow-x-hidden bg-neutral-950 text-white">
-      <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,rgba(37,99,235,0.22),transparent_32%),radial-gradient(circle_at_80%_20%,rgba(16,185,129,0.18),transparent_22%),linear-gradient(to_bottom,#0a0a0a,#111827,#0a0a0a)]" />
+  const isActive = (path: string) => {
+    if (path === `/games/${game.id}`) {
+      return location.pathname === path;
+    }
+    return location.pathname.startsWith(path);
+  };
 
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-neutral-950/70 backdrop-blur-2xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <Link to="/" className="text-sm text-white/50 hover:text-white">
+  return (
+    <div className="theme-page relative min-h-screen overflow-x-hidden">
+      <div
+        className="absolute inset-0 -z-10"
+        style={{
+          background: `
+            radial-gradient(circle at top, var(--hero-glow), transparent 32%),
+            radial-gradient(circle at 80% 20%, var(--hero-glow-2), transparent 22%),
+            linear-gradient(to bottom, var(--bg-gradient-start), var(--bg-gradient-mid), var(--bg-gradient-end))
+          `,
+        }}
+      />
+
+      <header
+        className="sticky top-0 z-30 backdrop-blur-2xl"
+
+      >
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+          <Link
+            to="/"
+            className="text-sm transition"
+            style={{ color: "var(--text-soft)" }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "var(--text)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "var(--text-soft)";
+            }}
+          >
             ← Lobby
           </Link>
 
-          <div className="text-center">
-            <div className="text-xs uppercase tracking-[0.3em] text-white/40">
+          <div className="min-w-0 text-center">
+            <div
+              className="text-xs uppercase tracking-[0.3em]"
+              style={{ color: "var(--muted)" }}
+            >
               Game
             </div>
 
-            <div className="text-xl font-black">{game.name}</div>
+            <div
+              className="truncate text-xl font-black"
+              style={{ color: "var(--text)" }}
+            >
+              {game.name}
+            </div>
           </div>
 
-          <Link to="/me" className="text-sm text-white/60 hover:text-white">
+          <Link
+            to="/me"
+            className="truncate text-sm transition"
+            style={{ color: "var(--text-soft)" }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "var(--text)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "var(--text-soft)";
+            }}
+          >
             {user.displayName || user.name || "Profile"}
           </Link>
         </div>
 
-        <div className="border-t border-white/10">
-          <nav className="mx-auto flex max-w-7xl flex-wrap gap-6 px-6 py-3 text-sm">
-            <Link
+        <div style={{ borderTop: "1px solid var(--border)" }}>
+          <nav className="mx-auto flex max-w-7xl flex-wrap gap-2 px-4 py-3 sm:px-6">
+            <ShellLink
               to={`/games/${game.id}`}
-              className="text-white/70 hover:text-white"
+              active={isActive(`/games/${game.id}`)}
             >
               Dashboard
-            </Link>
+            </ShellLink>
 
-            <Link
+            <ShellLink
               to={`/games/${game.id}/matches`}
-              className="text-white/70 hover:text-white"
+              active={isActive(`/games/${game.id}/matches`)}
             >
               Matches
-            </Link>
+            </ShellLink>
 
-            <Link
+            <ShellLink
               to={`/games/${game.id}/leaderboard`}
-              className="text-white/70 hover:text-white"
+              active={isActive(`/games/${game.id}/leaderboard`)}
             >
               Leaderboard
-            </Link>
+            </ShellLink>
 
-            <Link
+            <ShellLink
               to={`/games/${game.id}/predict`}
-              className="text-white/70 hover:text-white"
+              active={isActive(`/games/${game.id}/predict`)}
             >
               Predict
-            </Link>
+            </ShellLink>
 
             {canManageGame ? (
-              <Link
+              <ShellLink
                 to={`/games/${game.id}/admin`}
-                className="font-semibold text-emerald-300 hover:text-emerald-200"
+                active={isActive(`/games/${game.id}/admin`)}
+                accent={!isActive(`/games/${game.id}/admin`)}
               >
                 Admin
-              </Link>
+              </ShellLink>
             ) : null}
           </nav>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-10">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
         <Outlet />
       </main>
     </div>
