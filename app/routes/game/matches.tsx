@@ -294,7 +294,7 @@ function MatchRow({
 
   return (
     <Link
-      to={`/games/${gameId}/predict?matchId=${match.id}`}
+      to={`/games/${gameId}/matches/${match.id}`}
       className="block rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 transition hover:border-white/15 hover:bg-white/[0.05] sm:px-3.5 sm:py-3"
     >
       <div className="flex min-w-0 flex-col gap-2">
