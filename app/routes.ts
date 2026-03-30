@@ -16,9 +16,12 @@ export default [
   route("games/:gameId", "routes/game-layout.tsx", [
     index("routes/game/home.tsx"),
     route("predict", "routes/game/predict.tsx"),
+    route("predict-advanced/:matchId", "routes/game/predict-advanced.tsx"),
     route("leaderboard", "routes/game/leaderboard.tsx"),
     route("matches", "routes/game/matches.tsx"),
     route("matches/:matchId", "routes/game/match-details.tsx"),
+    route("teams/:teamId", "routes/game/team-details.tsx"),
+    route("players/:playerId", "routes/game/player-details.tsx"),
     route("members", "routes/game/members.tsx"),
     route("settings", "routes/game/settings.tsx"),
     route("admin", "routes/game/admin.tsx"),

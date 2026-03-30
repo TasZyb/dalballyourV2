@@ -8,32 +8,36 @@ generator client {
 }
 
 model User {
-  id              String    @id @default(cuid())
-  name            String?
-  email           String?   @unique
-  image           String?
-  emailVerified   DateTime?
-  role            UserRole  @default(USER)
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  image         String?
+  emailVerified DateTime?
+  role          UserRole  @default(USER)
 
   bio             String?
   favoriteTeamId  String?
   favoriteColor   String?
   profileBanner   String?
   displayName     String?
-  isProfilePublic Boolean   @default(true)
+  isProfilePublic Boolean @default(true)
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  lastSeenAt      DateTime?
+  wallet             UserWallet?
+  coinTransactions   CoinTransaction[]
+  createdCoinActions CoinTransaction[] @relation("CoinGrantedBy")
 
-  favoriteTeam    Team?        @relation("FavoriteTeam", fields: [favoriteTeamId], references: [id], onDelete: SetNull)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  lastSeenAt DateTime?
 
-  accounts        Account[]
-  sessions        Session[]
-  predictions     Prediction[]
-  memberships     GameMember[]
-  ownedGames      Game[]       @relation("GameOwner")
-  sentInvites     GameInvite[] @relation("InviteCreatedBy")
+  favoriteTeam Team? @relation("FavoriteTeam", fields: [favoriteTeamId], references: [id], onDelete: SetNull)
+
+  accounts    Account[]
+  sessions    Session[]
+  predictions Prediction[]
+  memberships GameMember[]
+  ownedGames  Game[]       @relation("GameOwner")
+  sentInvites GameInvite[] @relation("InviteCreatedBy")
 
   @@index([email])
   @@index([displayName])
@@ -46,15 +50,15 @@ model Account {
   provider          String
   providerAccountId String
 
-  refresh_token     String?
-  access_token      String?
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String?
-  session_state     String?
+  refresh_token String?
+  access_token  String?
+  expires_at    Int?
+  token_type    String?
+  scope         String?
+  id_token      String?
+  session_state String?
 
-  user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
   @@index([userId])
@@ -66,87 +70,183 @@ model Session {
   userId       String
   expires      DateTime
 
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
 
 model Team {
-  id             String   @id @default(cuid())
-  name           String
-  shortName      String?
-  code           String?
-  logo           String?
-  country        String?
+  id         String  @id @default(cuid())
+  name       String
+  shortName  String?
+  code       String?
+  logo       String?
+  country    String?
+  externalId String?
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  foundedYear    Int?
+  city           String?
+  stadium        String?
+  website        String?
+  primaryColor   String?
+  secondaryColor String?
 
-  homeMatches    Match[]  @relation("HomeTeamMatches")
-  awayMatches    Match[]  @relation("AwayTeamMatches")
-  favoredByUsers User[]   @relation("FavoriteTeam")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  homeMatches    Match[] @relation("HomeTeamMatches")
+  awayMatches    Match[] @relation("AwayTeamMatches")
+  favoredByUsers User[]  @relation("FavoriteTeam")
+
+  profile       TeamProfile?
+  players       Player[]
+  formSnapshots TeamFormSnapshot[]
+  lineups       MatchLineup[]
 
   @@unique([name])
   @@index([shortName])
   @@index([code])
+  @@index([externalId])
+}
+
+model TeamProfile {
+  id     String @id @default(cuid())
+  teamId String @unique
+
+  fullName      String?
+  nickname      String?
+  coach         String?
+  venueName     String?
+  venueCapacity Int?
+  description   String?
+  bannerImage   String?
+  badgeDark     String?
+  badgeLight    String?
+  foundedYear   Int?
+  city          String?
+  country       String?
+
+  externalSource    String?
+  externalUpdatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+}
+
+model Player {
+  id     String @id @default(cuid())
+  teamId String
+
+  externalId String?
+  name       String
+  shortName  String?
+  slug       String?
+  photo      String?
+
+  position       PlayerPosition @default(UNKNOWN)
+  shirtNumber    Int?
+  age            Int?
+  dateOfBirth    DateTime?
+  nationality    String?
+  countryOfBirth String?
+  heightCm       Int?
+  weightKg       Int?
+  preferredFoot  String?
+
+  isActive    Boolean @default(true)
+  isInjured   Boolean @default(false)
+  isSuspended Boolean @default(false)
+  injuryNote  String?
+  marketValue Int?
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastSyncedAt DateTime?
+
+  team                  Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  lineupEntries         MatchLineupPlayer[]
+  statSnapshots         PlayerStatSnapshot[]
+  mvpPredictions        Prediction[]           @relation("PredictionMvpPlayer")
+  predictionScorerPicks PredictionScorerPick[]
+  predictionLineupPicks PredictionLineupPick[]
+
+  @@unique([teamId, name], map: "player_teamId_name_key")
+  @@index([teamId])
+  @@index([externalId])
+  @@index([position])
+  @@index([isActive])
+  @@index([shirtNumber])
 }
 
 model Season {
-  id          String      @id @default(cuid())
-  name        String
-  yearLabel   String?
-  isCurrent   Boolean     @default(false)
-  startsAt    DateTime?
-  endsAt      DateTime?
+  id        String    @id @default(cuid())
+  name      String
+  yearLabel String?
+  isCurrent Boolean   @default(false)
+  startsAt  DateTime?
+  endsAt    DateTime?
 
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  externalId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   tournaments Tournament[]
+  teamForms   TeamFormSnapshot[]
+  playerStats PlayerStatSnapshot[]
 
   @@unique([name])
   @@index([isCurrent])
+  @@index([externalId])
 }
 
 model Tournament {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String?
-  country     String?
-  logo        String?
-  isActive    Boolean  @default(true)
-  seasonId    String?
+  id       String  @id @default(cuid())
+  name     String
+  slug     String?
+  country  String?
+  logo     String?
+  isActive Boolean @default(true)
+  seasonId String?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  externalId String?
+  type       String?
 
-  season      Season?  @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  season      Season?              @relation(fields: [seasonId], references: [id], onDelete: SetNull)
   rounds      Round[]
   matches     Match[]
   games       Game[]
+  teamForms   TeamFormSnapshot[]
+  playerStats PlayerStatSnapshot[]
 
   @@unique([name])
   @@unique([slug])
   @@index([seasonId])
   @@index([isActive])
+  @@index([externalId])
 }
 
 model Round {
-  id              String     @id @default(cuid())
-  tournamentId    String
-  name            String
-  slug            String?
-  order           Int?
-  defaultWeight   Int        @default(1)
+  id            String  @id @default(cuid())
+  tournamentId  String
+  name          String
+  slug          String?
+  order         Int?
+  defaultWeight Int     @default(1)
 
-  startsAt        DateTime?
-  endsAt          DateTime?
+  startsAt DateTime?
+  endsAt   DateTime?
 
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tournament      Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  matches         Match[]
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  matches    Match[]
 
   @@unique([tournamentId, name])
   @@index([tournamentId, order])
@@ -154,43 +254,50 @@ model Round {
 }
 
 model Match {
-  id              String       @id @default(cuid())
-  externalId      String?      @unique
+  id         String  @id @default(cuid())
+  externalId String? @unique
 
-  tournamentId    String
-  roundId         String?
+  tournamentId String
+  roundId      String?
 
-  homeTeamId      String
-  awayTeamId      String
+  homeTeamId String
+  awayTeamId String
 
-  venue           String?
-  stageLabel      String?
-  matchdayLabel   String?
+  venue         String?
+  stageLabel    String?
+  matchdayLabel String?
 
-  startTime       DateTime
-  status          MatchStatus @default(SCHEDULED)
+  startTime DateTime
+  status    MatchStatus @default(SCHEDULED)
 
-  homeScore       Int?
-  awayScore       Int?
+  homeScore Int?
+  awayScore Int?
 
-  extraHomeScore  Int?
-  extraAwayScore  Int?
-  penaltyHome     Int?
-  penaltyAway     Int?
+  extraHomeScore Int?
+  extraAwayScore Int?
+  penaltyHome    Int?
+  penaltyAway    Int?
 
   sourceUpdatedAt DateTime?
   lockedAt        DateTime?
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  referee       String?
+  attendance    Int?
+  homeFormation String?
+  awayFormation String?
 
-  tournament      Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  round           Round?     @relation(fields: [roundId], references: [id], onDelete: SetNull)
-  homeTeam        Team       @relation("HomeTeamMatches", fields: [homeTeamId], references: [id])
-  awayTeam        Team       @relation("AwayTeamMatches", fields: [awayTeamId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  predictions     Prediction[]
-  gameMatches     GameMatch[]
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  round      Round?     @relation(fields: [roundId], references: [id], onDelete: SetNull)
+  homeTeam   Team       @relation("HomeTeamMatches", fields: [homeTeamId], references: [id])
+  awayTeam   Team       @relation("AwayTeamMatches", fields: [awayTeamId], references: [id])
+
+  predictions      Prediction[]
+  gameMatches      GameMatch[]
+  coinTransactions CoinTransaction[]
+  lineups          MatchLineup[]
 
   @@unique([homeTeamId, awayTeamId, startTime])
   @@index([tournamentId, startTime])
@@ -198,48 +305,154 @@ model Match {
   @@index([status, startTime])
 }
 
+model MatchLineup {
+  id      String @id @default(cuid())
+  matchId String
+  teamId  String
+
+  formation       String?
+  isConfirmed     Boolean   @default(false)
+  coachName       String?
+  sourceUpdatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  match   Match               @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  team    Team                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  players MatchLineupPlayer[]
+
+  @@unique([matchId, teamId])
+  @@index([matchId])
+  @@index([teamId])
+}
+
+model MatchLineupPlayer {
+  id       String @id @default(cuid())
+  lineupId String
+  playerId String
+
+  role          LineupRole @default(STARTER)
+  positionLabel String?
+  shirtNumber   Int?
+  order         Int?
+  isCaptain     Boolean    @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lineup MatchLineup @relation(fields: [lineupId], references: [id], onDelete: Cascade)
+  player Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([lineupId, playerId])
+  @@index([playerId])
+  @@index([lineupId, role, order])
+}
+
+model TeamFormSnapshot {
+  id           String  @id @default(cuid())
+  teamId       String
+  tournamentId String?
+  seasonId     String?
+
+  formWindow    Int     @default(5)
+  wins          Int     @default(0)
+  draws         Int     @default(0)
+  losses        Int     @default(0)
+  goalsFor      Int     @default(0)
+  goalsAgainst  Int     @default(0)
+  cleanSheets   Int     @default(0)
+  failedToScore Int     @default(0)
+  points        Int     @default(0)
+  formString    String?
+
+  calculatedAt DateTime @default(now())
+
+  team       Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  tournament Tournament? @relation(fields: [tournamentId], references: [id], onDelete: SetNull)
+  season     Season?     @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+
+  @@index([teamId, calculatedAt])
+  @@index([tournamentId])
+  @@index([seasonId])
+}
+
+model PlayerStatSnapshot {
+  id           String  @id @default(cuid())
+  playerId     String
+  tournamentId String?
+  seasonId     String?
+
+  appearances Int @default(0)
+  starts      Int @default(0)
+  minutes     Int @default(0)
+  goals       Int @default(0)
+  assists     Int @default(0)
+  yellowCards Int @default(0)
+  redCards    Int @default(0)
+  cleanSheets Int @default(0)
+
+  calculatedAt DateTime @default(now())
+
+  player     Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  tournament Tournament? @relation(fields: [tournamentId], references: [id], onDelete: SetNull)
+  season     Season?     @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+
+  @@unique([playerId, tournamentId, seasonId, calculatedAt])
+  @@index([playerId])
+  @@index([tournamentId])
+  @@index([seasonId])
+}
+
 model Game {
-  id                        String         @id @default(cuid())
-  name                      String
-  slug                      String?        @unique
-  description               String?
+  id          String  @id @default(cuid())
+  name        String
+  slug        String? @unique
+  description String?
 
-  bannerUrl                 String?
-  avatarUrl                 String?
+  bannerUrl String?
+  avatarUrl String?
 
-  ownerId                   String
-  linkedTournamentId        String?
+  ownerId            String
+  linkedTournamentId String?
 
-  inviteCode                String         @unique
-  visibility                GameVisibility @default(PRIVATE)
-  status                    GameStatus     @default(ACTIVE)
+  inviteCode String         @unique
+  visibility GameVisibility @default(PRIVATE)
+  status     GameStatus     @default(ACTIVE)
 
-  allowJoinByCode           Boolean        @default(true)
-  allowMemberPredictionsEdit Boolean       @default(true)
+  allowJoinByCode            Boolean @default(true)
+  allowMemberPredictionsEdit Boolean @default(true)
 
-  timezone                  String?
+  timezone String?
 
-  scoringExact              Int            @default(3)
-  scoringOutcome            Int            @default(1)
-  scoringWrong              Int            @default(0)
+  scoringExact   Int @default(3)
+  scoringOutcome Int @default(1)
+  scoringWrong   Int @default(0)
 
-  defaultRoundWeight        Int            @default(1)
-  lockMinutesBeforeStart    Int            @default(0)
+  defaultRoundWeight     Int @default(1)
+  lockMinutesBeforeStart Int @default(0)
 
-  startsAt                  DateTime?
-  endsAt                    DateTime?
-  archivedAt                DateTime?
+  participationRewardCoins  Int @default(0)
+  exactScoreRewardCoins     Int @default(0)
+  correctOutcomeRewardCoins Int @default(0)
+  roundWinRewardCoins       Int @default(0)
+  gameWinRewardCoins        Int @default(0)
 
-  createdAt                 DateTime       @default(now())
-  updatedAt                 DateTime       @updatedAt
+  startsAt   DateTime?
+  endsAt     DateTime?
+  archivedAt DateTime?
 
-  owner                     User           @relation("GameOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  linkedTournament          Tournament?    @relation(fields: [linkedTournamentId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  members                   GameMember[]
-  invites                   GameInvite[]
-  gameMatches               GameMatch[]
-  predictions               Prediction[]
+  owner            User        @relation("GameOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  linkedTournament Tournament? @relation(fields: [linkedTournamentId], references: [id], onDelete: SetNull)
+
+  members          GameMember[]
+  invites          GameInvite[]
+  gameMatches      GameMatch[]
+  predictions      Prediction[]
+  coinTransactions CoinTransaction[]
 
   @@index([ownerId])
   @@index([linkedTournamentId])
@@ -247,21 +460,23 @@ model Game {
 }
 
 model GameMember {
-  id              String           @id @default(cuid())
-  userId          String
-  gameId          String
+  id     String @id @default(cuid())
+  userId String
+  gameId String
 
-  role            GameMemberRole   @default(MEMBER)
-  status          MembershipStatus @default(ACTIVE)
+  role   GameMemberRole   @default(MEMBER)
+  status MembershipStatus @default(ACTIVE)
 
-  nickname        String?
-  joinedAt        DateTime         @default(now())
-  leftAt          DateTime?
-  kickedAt        DateTime?
-  lastSeenAt      DateTime?
+  nickname   String?
+  joinedAt   DateTime  @default(now())
+  leftAt     DateTime?
+  kickedAt   DateTime?
+  lastSeenAt DateTime?
 
-  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  game            Game             @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  coinsEarned Int @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@unique([userId, gameId])
   @@index([gameId, role])
@@ -269,48 +484,48 @@ model GameMember {
 }
 
 model GameInvite {
-  id              String         @id @default(cuid())
-  gameId          String
-  code            String         @unique
+  id     String @id @default(cuid())
+  gameId String
+  code   String @unique
 
-  createdById     String?
-  email           String?
+  createdById String?
+  email       String?
 
-  roleOnJoin      GameMemberRole @default(MEMBER)
-  maxUses         Int?
-  usedCount       Int            @default(0)
+  roleOnJoin GameMemberRole @default(MEMBER)
+  maxUses    Int?
+  usedCount  Int            @default(0)
 
-  expiresAt       DateTime?
-  revokedAt       DateTime?
+  expiresAt DateTime?
+  revokedAt DateTime?
 
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  game            Game           @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  createdBy       User?          @relation("InviteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  game      Game  @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("InviteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([gameId])
   @@index([expiresAt])
 }
 
 model GameMatch {
-  id                   String   @id @default(cuid())
-  gameId               String
-  matchId              String
+  id      String @id @default(cuid())
+  gameId  String
+  matchId String
 
   customWeight         Int?
   bonusLabel           String?
-  includeInLeaderboard Boolean  @default(true)
-  isLocked             Boolean  @default(false)
+  includeInLeaderboard Boolean @default(true)
+  isLocked             Boolean @default(false)
 
-  predictionOpensAt    DateTime?
-  predictionClosesAt   DateTime?
+  predictionOpensAt  DateTime?
+  predictionClosesAt DateTime?
 
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  game                 Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  match                Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  game  Game  @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
   @@unique([gameId, matchId])
   @@index([gameId])
@@ -318,36 +533,158 @@ model GameMatch {
 }
 
 model Prediction {
-  id                    String   @id @default(cuid())
-  userId                String
-  gameId                String
-  matchId               String
+  id      String @id @default(cuid())
+  userId  String
+  gameId  String
+  matchId String
 
-  predictedHome         Int
-  predictedAway         Int
+  predictedHome Int
+  predictedAway Int
 
-  pointsAwarded         Int      @default(0)
-  weightUsed            Int      @default(1)
-  weightedPointsAwarded Int      @default(0)
+  predictedHomeFormation String?
+  predictedAwayFormation String?
 
-  multiplierUsed        Int      @default(1)
+  notes                     String?
+  confidenceLevel           Int?
+  predictedFirstTeamToScore PredictionTeamSide?
+  predictedBothTeamsToScore Boolean?
+  predictedTotalGoals       Int?
+  predictedMvpPlayerId      String?
 
-  wasExact              Boolean  @default(false)
-  wasOutcomeOnly        Boolean  @default(false)
-  wasWrong              Boolean  @default(false)
+  coinsAwarded Int @default(0)
 
-  submittedAt           DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  lockedAt              DateTime?
-  scoreCalculatedAt     DateTime?
+  pointsAwarded         Int @default(0)
+  weightUsed            Int @default(1)
+  weightedPointsAwarded Int @default(0)
 
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  game                  Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  match                 Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  multiplierUsed Int @default(1)
+
+  wasExact       Boolean @default(false)
+  wasOutcomeOnly Boolean @default(false)
+  wasWrong       Boolean @default(false)
+
+  submittedAt       DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lockedAt          DateTime?
+  scoreCalculatedAt DateTime?
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game  Game  @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  predictedMvpPlayer Player? @relation("PredictionMvpPlayer", fields: [predictedMvpPlayerId], references: [id], onDelete: SetNull)
+
+  scorerPicks PredictionScorerPick[]
+  lineupPicks PredictionLineupPick[]
 
   @@unique([userId, gameId, matchId])
   @@index([gameId, matchId])
   @@index([userId, gameId])
+}
+
+model PredictionLineupPick {
+  id           String @id @default(cuid())
+  predictionId String
+  playerId     String
+
+  teamSide               PredictionTeamSide
+  isStarter              Boolean            @default(true)
+  isCaptain              Boolean            @default(false)
+  predictedRole          LineupRole?
+  predictedPositionLabel String?
+  order                  Int?
+
+  prediction Prediction @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+  player     Player     @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([predictionId, playerId])
+  @@index([predictionId, teamSide, order])
+  @@index([playerId])
+}
+
+model PredictionScorerPick {
+  id           String @id @default(cuid())
+  predictionId String
+  playerId     String
+
+  teamSide          PredictionTeamSide
+  goalsCount        Int                @default(1)
+  minuteHint        Int?
+  isFirstGoalScorer Boolean            @default(false)
+  order             Int?
+
+  prediction Prediction @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+  player     Player     @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([predictionId, order])
+  @@index([playerId])
+}
+
+enum PredictionTeamSide {
+  HOME
+  AWAY
+}
+
+model UserWallet {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  balance        Int @default(0)
+  lifetimeEarned Int @default(0)
+  lifetimeSpent  Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CoinTransaction {
+  id      String  @id @default(cuid())
+  userId  String
+  gameId  String?
+  matchId String?
+
+  amount       Int
+  balanceAfter Int?
+  type         CoinTransactionType
+  reason       CoinReason
+
+  note            String?
+  grantedByUserId String?
+
+  createdAt DateTime @default(now())
+
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game      Game?  @relation(fields: [gameId], references: [id], onDelete: SetNull)
+  match     Match? @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  grantedBy User?  @relation("CoinGrantedBy", fields: [grantedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([gameId])
+  @@index([matchId])
+  @@index([reason])
+}
+
+enum CoinTransactionType {
+  EARN
+  SPEND
+  ADJUST
+  BONUS
+  PENALTY
+}
+
+enum CoinReason {
+  PARTICIPATION
+  EXACT_SCORE
+  CORRECT_OUTCOME
+  ROUND_WIN
+  GAME_WIN
+  STREAK_BONUS
+  DAILY_BONUS
+  ADMIN_GRANT
+  ADMIN_REMOVE
+  SHOP_PURCHASE
 }
 
 enum MatchStatus {
@@ -386,4 +723,18 @@ enum MembershipStatus {
   LEFT
   KICKED
   BANNED
+}
+
+enum PlayerPosition {
+  GOALKEEPER
+  DEFENDER
+  MIDFIELDER
+  FORWARD
+  UNKNOWN
+}
+
+enum LineupRole {
+  STARTER
+  BENCH
+  ABSENT
 }
