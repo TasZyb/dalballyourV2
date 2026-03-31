@@ -28,6 +28,18 @@ type PitchSlot = {
   order: number;
 };
 
+type FormationTemplateSlot = {
+  label: string;
+  line: PitchSlotLine;
+  x: number;
+  y: number;
+};
+
+type FormationTemplate = {
+  name: string;
+  slots: FormationTemplateSlot[];
+};
+
 type ActiveSlotState = {
   mode: "LINEUP";
   side: TeamSide;
@@ -69,6 +81,124 @@ type PlayerLite = {
   isInjured?: boolean;
   isSuspended?: boolean;
 };
+
+const FORMATION_TEMPLATES: FormationTemplate[] = [
+  {
+    name: "4-3-3",
+    slots: [
+      { label: "GK", line: "GK", x: 50, y: 88 },
+
+      { label: "LB", line: "DEF", x: 15, y: 70 },
+      { label: "LCB", line: "DEF", x: 38, y: 70 },
+      { label: "RCB", line: "DEF", x: 62, y: 70 },
+      { label: "RB", line: "DEF", x: 85, y: 70 },
+
+      { label: "LCM", line: "MID", x: 25, y: 52 },
+      { label: "CM", line: "MID", x: 50, y: 46 },
+      { label: "RCM", line: "MID", x: 75, y: 52 },
+
+      { label: "LW", line: "ATT", x: 20, y: 24 },
+      { label: "ST", line: "ATT", x: 50, y: 18 },
+      { label: "RW", line: "ATT", x: 80, y: 24 },
+    ],
+  },
+  {
+    name: "4-2-3-1",
+    slots: [
+      { label: "GK", line: "GK", x: 50, y: 88 },
+
+      { label: "LB", line: "DEF", x: 15, y: 70 },
+      { label: "LCB", line: "DEF", x: 38, y: 70 },
+      { label: "RCB", line: "DEF", x: 62, y: 70 },
+      { label: "RB", line: "DEF", x: 85, y: 70 },
+
+      { label: "LCDM", line: "MID", x: 40, y: 56 },
+      { label: "RCDM", line: "MID", x: 60, y: 56 },
+
+      { label: "LAM", line: "MID", x: 25, y: 39 },
+      { label: "CAM", line: "MID", x: 50, y: 34 },
+      { label: "RAM", line: "MID", x: 75, y: 39 },
+
+      { label: "ST", line: "ATT", x: 50, y: 18 },
+    ],
+  },
+  {
+    name: "4-4-2",
+    slots: [
+      { label: "GK", line: "GK", x: 50, y: 88 },
+
+      { label: "LB", line: "DEF", x: 15, y: 70 },
+      { label: "LCB", line: "DEF", x: 38, y: 70 },
+      { label: "RCB", line: "DEF", x: 62, y: 70 },
+      { label: "RB", line: "DEF", x: 85, y: 70 },
+
+      { label: "LM", line: "MID", x: 20, y: 50 },
+      { label: "LCM", line: "MID", x: 40, y: 45 },
+      { label: "RCM", line: "MID", x: 60, y: 45 },
+      { label: "RM", line: "MID", x: 80, y: 50 },
+
+      { label: "LST", line: "ATT", x: 38, y: 20 },
+      { label: "RST", line: "ATT", x: 62, y: 20 },
+    ],
+  },
+  {
+    name: "3-5-2",
+    slots: [
+      { label: "GK", line: "GK", x: 50, y: 88 },
+
+      { label: "LCB", line: "DEF", x: 30, y: 70 },
+      { label: "CB", line: "DEF", x: 50, y: 68 },
+      { label: "RCB", line: "DEF", x: 70, y: 70 },
+
+      { label: "LM", line: "MID", x: 14, y: 50 },
+      { label: "LCM", line: "MID", x: 34, y: 45 },
+      { label: "CM", line: "MID", x: 50, y: 40 },
+      { label: "RCM", line: "MID", x: 66, y: 45 },
+      { label: "RM", line: "MID", x: 86, y: 50 },
+
+      { label: "LST", line: "ATT", x: 40, y: 20 },
+      { label: "RST", line: "ATT", x: 60, y: 20 },
+    ],
+  },
+  {
+    name: "3-4-3",
+    slots: [
+      { label: "GK", line: "GK", x: 50, y: 88 },
+
+      { label: "LCB", line: "DEF", x: 30, y: 70 },
+      { label: "CB", line: "DEF", x: 50, y: 68 },
+      { label: "RCB", line: "DEF", x: 70, y: 70 },
+
+      { label: "LM", line: "MID", x: 20, y: 50 },
+      { label: "LCM", line: "MID", x: 40, y: 45 },
+      { label: "RCM", line: "MID", x: 60, y: 45 },
+      { label: "RM", line: "MID", x: 80, y: 50 },
+
+      { label: "LW", line: "ATT", x: 24, y: 24 },
+      { label: "ST", line: "ATT", x: 50, y: 18 },
+      { label: "RW", line: "ATT", x: 76, y: 24 },
+    ],
+  },
+  {
+    name: "5-3-2",
+    slots: [
+      { label: "GK", line: "GK", x: 50, y: 88 },
+
+      { label: "LWB", line: "DEF", x: 10, y: 70 },
+      { label: "LCB", line: "DEF", x: 30, y: 70 },
+      { label: "CB", line: "DEF", x: 50, y: 72 },
+      { label: "RCB", line: "DEF", x: 70, y: 70 },
+      { label: "RWB", line: "DEF", x: 90, y: 70 },
+
+      { label: "LCM", line: "MID", x: 30, y: 50 },
+      { label: "CM", line: "MID", x: 50, y: 44 },
+      { label: "RCM", line: "MID", x: 70, y: 50 },
+
+      { label: "LST", line: "ATT", x: 40, y: 20 },
+      { label: "RST", line: "ATT", x: 60, y: 20 },
+    ],
+  },
+];
 
 function createLocalId() {
   return Math.random().toString(36).slice(2, 11);
@@ -113,54 +243,19 @@ function getTeamLogoSrc(team: any) {
   return null;
 }
 
-function getFormationLines(formation: string) {
-  const parts = formation
-    .split("-")
-    .map(Number)
-    .filter((value) => Number.isFinite(value) && value > 0);
-
-  return parts.length ? parts : [4, 3, 3];
-}
-
 function buildHalfPitchSlots(formation: string, side: TeamSide): PitchSlot[] {
-  const lines = getFormationLines(formation);
+  const template =
+    FORMATION_TEMPLATES.find((item) => item.name === formation) ??
+    FORMATION_TEMPLATES.find((item) => item.name === "4-3-3")!;
 
-  const slots: PitchSlot[] = [
-    {
-      key: `${side}-GK`,
-      x: 50,
-      y: 86,
-      label: "GK",
-      line: "GK",
-      order: 0,
-    },
-  ];
-
-  const yMap = [66, 48, 30, 15];
-  let order = 1;
-
-  lines.forEach((count, lineIndex) => {
-    const y = yMap[lineIndex] ?? 48;
-
-    for (let i = 0; i < count; i++) {
-      const x = count === 1 ? 50 : 14 + (72 / (count - 1)) * i;
-
-      let line: PitchSlotLine = "MID";
-      if (lineIndex === 0) line = "DEF";
-      else if (lineIndex === lines.length - 1) line = "ATT";
-
-      slots.push({
-        key: `${side}-${lineIndex}-${i}`,
-        x,
-        y,
-        label: line,
-        line,
-        order: order++,
-      });
-    }
-  });
-
-  return slots;
+  return template.slots.map((slot, index) => ({
+    key: `${side}-${formation}-${index}-${slot.label}`,
+    x: slot.x,
+    y: slot.y,
+    label: slot.label,
+    line: slot.line,
+    order: index,
+  }));
 }
 
 function normalizeLineupPayload(raw: unknown): LineupStateItem[] {
@@ -328,7 +423,12 @@ function filterPlayersForSlot(players: PlayerLite[], slotLine: PitchSlotLine) {
   }
 
   if (slotLine === "MID") {
-    return players.filter((p) => p.position !== "GOALKEEPER");
+    return players.filter(
+      (p) =>
+        p.position === "MIDFIELDER" ||
+        p.position === "DEFENDER" ||
+        p.position === "FORWARD"
+    );
   }
 
   return players.filter(
@@ -835,28 +935,44 @@ function LineupCard({
     <button
       type="button"
       onClick={onClick}
-      className="group relative w-[74px] rounded-[20px] border border-white/10 bg-[#0a1014]/92 px-2 py-2 shadow-[0_10px_24px_rgba(0,0,0,0.28)] transition hover:border-white/15 hover:bg-[#0d1419]"
+      className="
+        group relative
+        w-[54px] sm:w-[62px] lg:w-[68px]
+        rounded-[14px] sm:rounded-[16px]
+        border border-white/10
+        bg-[#0b1116]/92
+        px-1.5 py-1.5 sm:px-2 sm:py-2
+        shadow-[0_8px_18px_rgba(0,0,0,0.24)]
+        transition hover:border-white/15 hover:bg-[#101820]
+      "
     >
       <span
         onClick={(e) => {
           e.stopPropagation();
           onRemove();
         }}
-        className="absolute -right-1.5 -top-1.5 z-20 inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/10 bg-black/80 text-[10px] text-white/65 opacity-0 transition group-hover:opacity-100"
+        className="
+          absolute -right-1 -top-1 z-20
+          inline-flex h-4 w-4 sm:h-5 sm:w-5
+          items-center justify-center
+          rounded-full border border-white/10 bg-black/80
+          text-[9px] text-white/65
+          opacity-0 transition group-hover:opacity-100
+        "
       >
         ×
       </span>
 
       <div className="mb-1 flex items-center justify-between">
-        <span className="text-[8px] font-semibold uppercase tracking-[0.16em] text-white/35">
+        <span className="text-[7px] sm:text-[8px] font-semibold uppercase tracking-[0.14em] text-white/35">
           {slotLabel}
         </span>
-        <span className="text-[8px] text-white/30">
-          #{player.shirtNumber ?? "--"}
+        <span className="text-[7px] sm:text-[8px] text-white/30">
+          {player.shirtNumber ?? "--"}
         </span>
       </div>
 
-      <div className="mx-auto flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5">
+      <div className="mx-auto flex h-7 w-7 sm:h-8 sm:w-8 lg:h-9 lg:w-9 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5">
         {player.photo ? (
           <img
             src={player.photo}
@@ -864,16 +980,16 @@ function LineupCard({
             className="h-full w-full object-cover"
           />
         ) : (
-          <span className="text-[10px] font-bold text-white/70">
+          <span className="text-[8px] sm:text-[9px] font-bold text-white/70">
             {getShortPlayerName(player).slice(0, 2).toUpperCase()}
           </span>
         )}
       </div>
 
-      <div className="mt-1.5 truncate text-[10px] font-semibold text-white">
+      <div className="mt-1 truncate text-[8px] sm:text-[9px] font-semibold text-white">
         {getShortPlayerName(player)}
       </div>
-      <div className="text-[8px] uppercase tracking-[0.14em] text-white/30">
+      <div className="text-[7px] sm:text-[8px] uppercase tracking-[0.12em] text-white/28">
         {getPositionLabel(player.position)}
       </div>
     </button>
@@ -920,142 +1036,179 @@ function HalfPitchSvg({
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-[24px] border border-white/8 bg-[#143a24]">
-        <svg viewBox="0 0 100 100" className="block aspect-[0.78/1] w-full">
-          <defs>
-            <linearGradient id={`pitch-base-${side}`} x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="#1b4c2f" />
-              <stop offset="100%" stopColor="#123722" />
-            </linearGradient>
+      <div className="flex justify-center">
+        <div
+          className="
+            relative w-full max-w-[420px]
+            overflow-hidden rounded-[22px]
+            border border-white/8
+            shadow-[0_10px_30px_rgba(0,0,0,0.22)]
+          "
+          style={{
+            aspectRatio: "50 / 70",
+            background: "#165b24",
+          }}
+        >
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute top-0 bottom-0"
+              style={{
+                left: `${(i * 100) / 8}%`,
+                width: `${100 / 8}%`,
+                backgroundColor: i % 2 === 0 ? "#1b6f28" : "#165b24",
+              }}
+            />
+          ))}
 
-            <pattern
-              id={`grass-lines-${side}`}
-              width="100"
-              height="12"
-              patternUnits="userSpaceOnUse"
-            >
-              <rect width="100" height="6" fill="rgba(255,255,255,0.018)" />
-              <rect y="6" width="100" height="6" fill="rgba(0,0,0,0.018)" />
-            </pattern>
-          </defs>
+          <div
+            className="absolute inset-0"
+            style={{
+              transform: side === "AWAY" ? "scaleY(-1)" : "none",
+              transformOrigin: "center",
+            }}
+          >
+            <svg viewBox="0 0 100 140" className="absolute inset-0 h-full w-full">
+              <rect
+                x="4.5"
+                y="4.5"
+                width="91"
+                height="131"
+                rx="2"
+                fill="none"
+                stroke="rgba(255,255,255,0.92)"
+                strokeWidth="0.8"
+              />
 
-          <rect width="100" height="100" fill={`url(#pitch-base-${side})`} />
-          <rect width="100" height="100" fill={`url(#grass-lines-${side})`} />
+              <line
+                x1="4.5"
+                x2="95.5"
+                y1="70"
+                y2="70"
+                stroke="rgba(255,255,255,0.92)"
+                strokeWidth="0.8"
+              />
 
-          <rect
-            x="5.5"
-            y="5.5"
-            width="89"
-            height="89"
-            rx="2"
-            fill="none"
-            stroke="rgba(255,255,255,0.18)"
-            strokeWidth="0.75"
-          />
+              <circle
+                cx="50"
+                cy="70"
+                r="10"
+                fill="none"
+                stroke="rgba(255,255,255,0.92)"
+                strokeWidth="0.8"
+              />
+              <circle cx="50" cy="70" r="1" fill="rgba(255,255,255,0.92)" />
 
-          <line
-            x1="5.5"
-            x2="94.5"
-            y1="94.5"
-            y2="94.5"
-            stroke="rgba(255,255,255,0.18)"
-            strokeWidth="0.75"
-          />
+              <rect
+                x="21"
+                y="4.5"
+                width="58"
+                height="22"
+                fill="none"
+                stroke="rgba(255,255,255,0.92)"
+                strokeWidth="0.8"
+              />
 
-          <rect
-            x="22"
-            y="75.5"
-            width="56"
-            height="19"
-            rx="1.4"
-            fill="none"
-            stroke="rgba(255,255,255,0.14)"
-            strokeWidth="0.75"
-          />
+              <rect
+                x="34"
+                y="4.5"
+                width="32"
+                height="10"
+                fill="none"
+                stroke="rgba(255,255,255,0.92)"
+                strokeWidth="0.8"
+              />
 
-          <rect
-            x="34"
-            y="87.5"
-            width="32"
-            height="7"
-            rx="1"
-            fill="none"
-            stroke="rgba(255,255,255,0.12)"
-            strokeWidth="0.75"
-          />
+              <circle cx="50" cy="20" r="1" fill="rgba(255,255,255,0.92)" />
 
-          <circle cx="50" cy="81.8" r="1" fill="rgba(255,255,255,0.16)" />
+              <path
+                d="M 41 26 A 10 10 0 0 0 59 26"
+                fill="none"
+                stroke="rgba(255,255,255,0.92)"
+                strokeWidth="0.8"
+              />
 
-          <path
-            d="M41.5 94.5 A8.5 8.5 0 0 1 58.5 94.5"
-            fill="none"
-            stroke="rgba(255,255,255,0.12)"
-            strokeWidth="0.75"
-          />
+              <rect
+                x="21"
+                y="113.5"
+                width="58"
+                height="22"
+                fill="none"
+                stroke="rgba(255,255,255,0.92)"
+                strokeWidth="0.8"
+              />
+
+              <rect
+                x="34"
+                y="125.5"
+                width="32"
+                height="10"
+                fill="none"
+                stroke="rgba(255,255,255,0.92)"
+                strokeWidth="0.8"
+              />
+
+              <circle cx="50" cy="120" r="1" fill="rgba(255,255,255,0.92)" />
+
+              <path
+                d="M 41 114 A 10 10 0 0 1 59 114"
+                fill="none"
+                stroke="rgba(255,255,255,0.92)"
+                strokeWidth="0.8"
+              />
+            </svg>
+          </div>
 
           {slots.map((slot) => {
             const pick = getPlayerForSlot(lineup, side, slot);
 
-            return (
-              <g key={slot.key}>
-                {!pick ? (
-                  <>
-                    <circle
-                      cx={slot.x}
-                      cy={slot.y}
-                      r="4.9"
-                      fill="rgba(255,255,255,0.03)"
-                      stroke="rgba(255,255,255,0.16)"
-                      strokeWidth="0.75"
-                    />
-                    <circle
-                      cx={slot.x}
-                      cy={slot.y}
-                      r="2.7"
-                      fill="rgba(255,255,255,0.02)"
-                    />
-                  </>
-                ) : null}
-              </g>
-            );
-          })}
-        </svg>
+            if (pick) return null;
 
-        {slots.map((slot) => {
-          const pick = getPlayerForSlot(lineup, side, slot);
-
-          if (!pick) {
             return (
               <button
-                key={`slot-${slot.key}`}
+                key={`empty-${slot.key}`}
                 type="button"
                 onClick={() => onOpenSlot(slot)}
                 className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full"
-                style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
+                style={{
+                  left: `${slot.x}%`,
+                  top: `${slot.y}%`,
+                }}
               >
-                <div className="h-[52px] w-[52px]" />
+                <div className="relative h-[34px] w-[34px] sm:h-[38px] sm:w-[38px]">
+                  <div className="absolute inset-0 rounded-full border border-white/20 bg-white/[0.05]" />
+                  <div className="absolute inset-[7px] rounded-full border border-white/10 bg-white/[0.03]" />
+                </div>
               </button>
             );
-          }
+          })}
 
-          const player = playerMap.get(pick.playerId);
-          if (!player) return null;
+          {slots.map((slot) => {
+            const pick = getPlayerForSlot(lineup, side, slot);
+            if (!pick) return null;
 
-          return (
-            <div
-              key={`card-${slot.key}`}
-              className="absolute -translate-x-1/2 -translate-y-1/2"
-              style={{ left: `${slot.x}%`, top: `${slot.y}%` }}
-            >
-              <LineupCard
-                player={player}
-                slotLabel={slot.label}
-                onClick={() => onOpenSlot(slot)}
-                onRemove={() => onRemoveFromSlot(slot)}
-              />
-            </div>
-          );
-        })}
+            const player = playerMap.get(pick.playerId);
+            if (!player) return null;
+
+            return (
+              <div
+                key={`filled-${slot.key}`}
+                className="absolute -translate-x-1/2 -translate-y-1/2"
+                style={{
+                  left: `${slot.x}%`,
+                  top: `${slot.y}%`,
+                }}
+              >
+                <LineupCard
+                  player={player}
+                  slotLabel={slot.label}
+                  onClick={() => onOpenSlot(slot)}
+                  onRemove={() => onRemoveFromSlot(slot)}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -1368,13 +1521,18 @@ export default function PredictAdvancedPage() {
   const homeScorers = scorers.filter((item) => item.teamSide === "HOME");
   const awayScorers = scorers.filter((item) => item.teamSide === "AWAY");
 
-  const selectedTeam = selectedTeamSide === "HOME" ? match.homeTeam : match.awayTeam;
+  const selectedTeam =
+    selectedTeamSide === "HOME" ? match.homeTeam : match.awayTeam;
   const selectedFormation =
-    selectedTeamSide === "HOME" ? predictedHomeFormation : predictedAwayFormation;
+    selectedTeamSide === "HOME"
+      ? predictedHomeFormation
+      : predictedAwayFormation;
   const selectedGoalsLimit =
     selectedTeamSide === "HOME" ? predictedHome : predictedAway;
   const selectedTeamPlayers =
-    selectedTeamSide === "HOME" ? match.homeTeam.players : match.awayTeam.players;
+    selectedTeamSide === "HOME"
+      ? match.homeTeam.players
+      : match.awayTeam.players;
   const selectedTeamScorers =
     selectedTeamSide === "HOME" ? homeScorers : awayScorers;
 
@@ -1490,9 +1648,13 @@ export default function PredictAdvancedPage() {
     if (!activeSlot) return [];
 
     const teamPlayers =
-      activeSlot.side === "HOME" ? match.homeTeam.players : match.awayTeam.players;
+      activeSlot.side === "HOME"
+        ? match.homeTeam.players
+        : match.awayTeam.players;
 
-    return sortPlayersForPicker(filterPlayersForSlot(teamPlayers, activeSlot.slot.line));
+    return sortPlayersForPicker(
+      filterPlayersForSlot(teamPlayers, activeSlot.slot.line)
+    );
   }, [activeSlot, match.homeTeam.players, match.awayTeam.players]);
 
   const lineupSelectedIds = useMemo(() => {
@@ -1507,21 +1669,29 @@ export default function PredictAdvancedPage() {
 
   const currentLineupPlayerId = useMemo(() => {
     if (!activeSlot) return null;
-    return getPlayerForSlot(lineup, activeSlot.side, activeSlot.slot)?.playerId ?? null;
+    return (
+      getPlayerForSlot(lineup, activeSlot.side, activeSlot.slot)?.playerId ??
+      null
+    );
   }, [activeSlot, lineup]);
 
   const currentScorerPlayers = useMemo(() => {
     if (!activeScorer) return [];
 
     const teamPlayers =
-      activeScorer.side === "HOME" ? match.homeTeam.players : match.awayTeam.players;
+      activeScorer.side === "HOME"
+        ? match.homeTeam.players
+        : match.awayTeam.players;
 
     return sortPlayersForPicker(teamPlayers);
   }, [activeScorer, match.homeTeam.players, match.awayTeam.players]);
 
   const currentScorerPlayerId = useMemo(() => {
     if (!activeScorer) return null;
-    return scorers.find((item) => item.id === activeScorer.scorerId)?.playerId ?? null;
+    return (
+      scorers.find((item) => item.id === activeScorer.scorerId)?.playerId ??
+      null
+    );
   }, [activeScorer, scorers]);
 
   return (
