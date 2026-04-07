@@ -18,6 +18,7 @@ const FORMATIONS = ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2", "3-4-3", "5-3-2"];
 type TeamSide = "HOME" | "AWAY";
 type LocalLineupRole = "STARTER" | "BENCH" | "ABSENT";
 type PitchSlotLine = "GK" | "DEF" | "MID" | "ATT";
+type AdvancedTab = "overview" | "lineup" | "events";
 
 type PitchSlot = {
   key: string;
@@ -44,12 +45,6 @@ type ActiveSlotState = {
   mode: "LINEUP";
   side: TeamSide;
   slot: PitchSlot;
-} | null;
-
-type ActiveScorerState = {
-  mode: "SCORER";
-  scorerId: string;
-  side: TeamSide;
 } | null;
 
 type ScorerStateItem = {
@@ -82,21 +77,22 @@ type PlayerLite = {
   isSuspended?: boolean;
 };
 
+type ActionData = {
+  error?: string;
+};
+
 const FORMATION_TEMPLATES: FormationTemplate[] = [
   {
     name: "4-3-3",
     slots: [
       { label: "GK", line: "GK", x: 50, y: 88 },
-
       { label: "LB", line: "DEF", x: 15, y: 70 },
       { label: "LCB", line: "DEF", x: 38, y: 70 },
       { label: "RCB", line: "DEF", x: 62, y: 70 },
       { label: "RB", line: "DEF", x: 85, y: 70 },
-
       { label: "LCM", line: "MID", x: 25, y: 52 },
       { label: "CM", line: "MID", x: 50, y: 46 },
       { label: "RCM", line: "MID", x: 75, y: 52 },
-
       { label: "LW", line: "ATT", x: 20, y: 24 },
       { label: "ST", line: "ATT", x: 50, y: 18 },
       { label: "RW", line: "ATT", x: 80, y: 24 },
@@ -106,19 +102,15 @@ const FORMATION_TEMPLATES: FormationTemplate[] = [
     name: "4-2-3-1",
     slots: [
       { label: "GK", line: "GK", x: 50, y: 88 },
-
       { label: "LB", line: "DEF", x: 15, y: 70 },
       { label: "LCB", line: "DEF", x: 38, y: 70 },
       { label: "RCB", line: "DEF", x: 62, y: 70 },
       { label: "RB", line: "DEF", x: 85, y: 70 },
-
       { label: "LCDM", line: "MID", x: 40, y: 56 },
       { label: "RCDM", line: "MID", x: 60, y: 56 },
-
       { label: "LAM", line: "MID", x: 25, y: 39 },
       { label: "CAM", line: "MID", x: 50, y: 34 },
       { label: "RAM", line: "MID", x: 75, y: 39 },
-
       { label: "ST", line: "ATT", x: 50, y: 18 },
     ],
   },
@@ -126,17 +118,14 @@ const FORMATION_TEMPLATES: FormationTemplate[] = [
     name: "4-4-2",
     slots: [
       { label: "GK", line: "GK", x: 50, y: 88 },
-
       { label: "LB", line: "DEF", x: 15, y: 70 },
       { label: "LCB", line: "DEF", x: 38, y: 70 },
       { label: "RCB", line: "DEF", x: 62, y: 70 },
       { label: "RB", line: "DEF", x: 85, y: 70 },
-
       { label: "LM", line: "MID", x: 20, y: 50 },
       { label: "LCM", line: "MID", x: 40, y: 45 },
       { label: "RCM", line: "MID", x: 60, y: 45 },
       { label: "RM", line: "MID", x: 80, y: 50 },
-
       { label: "LST", line: "ATT", x: 38, y: 20 },
       { label: "RST", line: "ATT", x: 62, y: 20 },
     ],
@@ -145,17 +134,14 @@ const FORMATION_TEMPLATES: FormationTemplate[] = [
     name: "3-5-2",
     slots: [
       { label: "GK", line: "GK", x: 50, y: 88 },
-
       { label: "LCB", line: "DEF", x: 30, y: 70 },
       { label: "CB", line: "DEF", x: 50, y: 68 },
       { label: "RCB", line: "DEF", x: 70, y: 70 },
-
       { label: "LM", line: "MID", x: 14, y: 50 },
       { label: "LCM", line: "MID", x: 34, y: 45 },
       { label: "CM", line: "MID", x: 50, y: 40 },
       { label: "RCM", line: "MID", x: 66, y: 45 },
       { label: "RM", line: "MID", x: 86, y: 50 },
-
       { label: "LST", line: "ATT", x: 40, y: 20 },
       { label: "RST", line: "ATT", x: 60, y: 20 },
     ],
@@ -164,16 +150,13 @@ const FORMATION_TEMPLATES: FormationTemplate[] = [
     name: "3-4-3",
     slots: [
       { label: "GK", line: "GK", x: 50, y: 88 },
-
       { label: "LCB", line: "DEF", x: 30, y: 70 },
       { label: "CB", line: "DEF", x: 50, y: 68 },
       { label: "RCB", line: "DEF", x: 70, y: 70 },
-
       { label: "LM", line: "MID", x: 20, y: 50 },
       { label: "LCM", line: "MID", x: 40, y: 45 },
       { label: "RCM", line: "MID", x: 60, y: 45 },
       { label: "RM", line: "MID", x: 80, y: 50 },
-
       { label: "LW", line: "ATT", x: 24, y: 24 },
       { label: "ST", line: "ATT", x: 50, y: 18 },
       { label: "RW", line: "ATT", x: 76, y: 24 },
@@ -183,17 +166,14 @@ const FORMATION_TEMPLATES: FormationTemplate[] = [
     name: "5-3-2",
     slots: [
       { label: "GK", line: "GK", x: 50, y: 88 },
-
       { label: "LWB", line: "DEF", x: 10, y: 70 },
       { label: "LCB", line: "DEF", x: 30, y: 70 },
       { label: "CB", line: "DEF", x: 50, y: 72 },
       { label: "RCB", line: "DEF", x: 70, y: 70 },
       { label: "RWB", line: "DEF", x: 90, y: 70 },
-
       { label: "LCM", line: "MID", x: 30, y: 50 },
       { label: "CM", line: "MID", x: 50, y: 44 },
       { label: "RCM", line: "MID", x: 70, y: 50 },
-
       { label: "LST", line: "ATT", x: 40, y: 20 },
       { label: "RST", line: "ATT", x: 60, y: 20 },
     ],
@@ -436,6 +416,64 @@ function filterPlayersForSlot(players: PlayerLite[], slotLine: PitchSlotLine) {
   );
 }
 
+function countGoalsForSide(scorers: ScorerStateItem[], side: TeamSide) {
+  return scorers
+    .filter((item) => item.teamSide === side)
+    .reduce((sum, item) => sum + item.goalsCount, 0);
+}
+
+function getScorersForSide(scorers: ScorerStateItem[], side: TeamSide) {
+  return scorers
+    .filter((item) => item.teamSide === side)
+    .sort((a, b) => a.order - b.order);
+}
+
+function getScorerForPlayer(
+  scorers: ScorerStateItem[],
+  playerId: string,
+  side: TeamSide
+) {
+  return scorers.find(
+    (item) => item.playerId === playerId && item.teamSide === side
+  );
+}
+
+function getGoalsRemainingForSide(
+  scorers: ScorerStateItem[],
+  side: TeamSide,
+  predictedHome: number,
+  predictedAway: number
+) {
+  const target = side === "HOME" ? predictedHome : predictedAway;
+  return Math.max(0, target - countGoalsForSide(scorers, side));
+}
+
+function hasFirstGoalScorerForSide(scorers: ScorerStateItem[], side: TeamSide) {
+  return scorers.some(
+    (item) => item.teamSide === side && item.isFirstGoalScorer
+  );
+}
+
+function getStarterPlayerIdsForSide(lineup: LineupStateItem[], side: TeamSide) {
+  return new Set(
+    lineup
+      .filter((item) => item.teamSide === side && item.isStarter)
+      .map((item) => item.playerId)
+  );
+}
+
+function getStarterCountForSide(lineup: LineupStateItem[], side: TeamSide) {
+  return lineup.filter((item) => item.teamSide === side && item.isStarter).length;
+}
+
+function getTeamBySide(match: any, side: TeamSide) {
+  return side === "HOME" ? match.homeTeam : match.awayTeam;
+}
+
+function getSideLabel(side: TeamSide) {
+  return side === "HOME" ? "Господарі" : "Гості";
+}
+
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const currentUser = await getCurrentUser(request);
   const gameId = params.gameId;
@@ -522,15 +560,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             },
             include: {
               scorerPicks: {
-                include: {
-                  player: true,
-                },
+                include: { player: true },
                 orderBy: [{ order: "asc" }],
               },
               lineupPicks: {
-                include: {
-                  player: true,
-                },
+                include: { player: true },
                 orderBy: [{ order: "asc" }],
               },
               predictedMvpPlayer: true,
@@ -618,7 +652,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     predictedHome < 0 ||
     predictedAway < 0
   ) {
-    return data({ error: "Введи коректний рахунок." }, { status: 400 });
+    return data<ActionData>({ error: "Введи коректний рахунок." }, { status: 400 });
   }
 
   const membership = await prisma.gameMember.findFirst({
@@ -630,7 +664,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   });
 
   if (!membership) {
-    return data({ error: "Ти не є учасником цієї гри." }, { status: 403 });
+    return data<ActionData>({ error: "Ти не є учасником цієї гри." }, { status: 403 });
   }
 
   const game = await prisma.game.findUnique({
@@ -643,7 +677,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   });
 
   if (!game) {
-    return data({ error: "Гру не знайдено." }, { status: 404 });
+    return data<ActionData>({ error: "Гру не знайдено." }, { status: 404 });
   }
 
   const gameMatch = await prisma.gameMatch.findFirst({
@@ -663,7 +697,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   });
 
   if (!gameMatch) {
-    return data({ error: "Матч не входить у цю гру." }, { status: 404 });
+    return data<ActionData>({ error: "Матч не входить у цю гру." }, { status: 404 });
   }
 
   const locked = isPredictionLocked({
@@ -675,7 +709,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   });
 
   if (locked) {
-    return data(
+    return data<ActionData>(
       { error: "Прогноз на цей матч уже закритий." },
       { status: 400 }
     );
@@ -692,7 +726,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   });
 
   if (existingPrediction && !game.allowMemberPredictionsEdit) {
-    return data(
+    return data<ActionData>(
       { error: "У цій грі редагування прогнозів вимкнене." },
       { status: 400 }
     );
@@ -705,22 +739,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
     scorersPayload = normalizeScorersPayload(JSON.parse(scorersJson));
     lineupPayload = normalizeLineupPayload(JSON.parse(lineupJson));
   } catch {
-    return data(
+    return data<ActionData>(
       { error: "Помилка у форматі детального прогнозу." },
       { status: 400 }
     );
   }
 
-  const homeGoalsPicked = scorersPayload
-    .filter((item) => item.teamSide === "HOME")
-    .reduce((sum, item) => sum + item.goalsCount, 0);
-
-  const awayGoalsPicked = scorersPayload
-    .filter((item) => item.teamSide === "AWAY")
-    .reduce((sum, item) => sum + item.goalsCount, 0);
+  const homeGoalsPicked = countGoalsForSide(scorersPayload, "HOME");
+  const awayGoalsPicked = countGoalsForSide(scorersPayload, "AWAY");
 
   if (homeGoalsPicked !== predictedHome) {
-    return data(
+    return data<ActionData>(
       {
         error: `Для господарів потрібно розподілити рівно ${predictedHome} гол(и).`,
       },
@@ -729,7 +758,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   if (awayGoalsPicked !== predictedAway) {
-    return data(
+    return data<ActionData>(
       {
         error: `Для гостей потрібно розподілити рівно ${predictedAway} гол(и).`,
       },
@@ -737,23 +766,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
-  const allHomePlayerIds = new Set(
-    gameMatch.match.homeTeam.players.map((p) => p.id)
-  );
-  const allAwayPlayerIds = new Set(
-    gameMatch.match.awayTeam.players.map((p) => p.id)
-  );
+  const allHomePlayerIds = new Set(gameMatch.match.homeTeam.players.map((p) => p.id));
+  const allAwayPlayerIds = new Set(gameMatch.match.awayTeam.players.map((p) => p.id));
 
   for (const scorer of scorersPayload) {
     if (scorer.teamSide === "HOME" && !allHomePlayerIds.has(scorer.playerId)) {
-      return data(
+      return data<ActionData>(
         { error: "Один із бомбардирів не належить господарям." },
         { status: 400 }
       );
     }
 
     if (scorer.teamSide === "AWAY" && !allAwayPlayerIds.has(scorer.playerId)) {
-      return data(
+      return data<ActionData>(
         { error: "Один із бомбардирів не належить гостям." },
         { status: 400 }
       );
@@ -762,18 +787,43 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   for (const item of lineupPayload) {
     if (item.teamSide === "HOME" && !allHomePlayerIds.has(item.playerId)) {
-      return data(
+      return data<ActionData>(
         { error: "Один із гравців складу не належить господарям." },
         { status: 400 }
       );
     }
 
     if (item.teamSide === "AWAY" && !allAwayPlayerIds.has(item.playerId)) {
-      return data(
+      return data<ActionData>(
         { error: "Один із гравців складу не належить гостям." },
         { status: 400 }
       );
     }
+  }
+
+  if (
+    predictedMvpPlayerId &&
+    !allHomePlayerIds.has(predictedMvpPlayerId) &&
+    !allAwayPlayerIds.has(predictedMvpPlayerId)
+  ) {
+    return data<ActionData>(
+      { error: "MVP-гравець не належить жодній з команд цього матчу." },
+      { status: 400 }
+    );
+  }
+
+  const homeFirstScorers = scorersPayload.filter(
+    (item) => item.teamSide === "HOME" && item.isFirstGoalScorer
+  );
+  const awayFirstScorers = scorersPayload.filter(
+    (item) => item.teamSide === "AWAY" && item.isFirstGoalScorer
+  );
+
+  if (homeFirstScorers.length > 1 || awayFirstScorers.length > 1) {
+    return data<ActionData>(
+      { error: "Для кожної команди можна вибрати лише одного автора першого голу." },
+      { status: 400 }
+    );
   }
 
   const homeStarters = lineupPayload.filter(
@@ -784,7 +834,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
   );
 
   if (homeStarters.length > 11 || awayStarters.length > 11) {
-    return data(
+    return data<ActionData>(
       { error: "У стартовому складі не може бути більше 11 гравців." },
       { status: 400 }
     );
@@ -877,20 +927,64 @@ export async function action({ request, params }: ActionFunctionArgs) {
   throw redirect(`/games/${gameId}/predict-advanced/${matchId}`);
 }
 
+function IconScore() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-2">
+      <path d="M4 7h16" />
+      <path d="M4 12h16" />
+      <path d="M4 17h10" />
+    </svg>
+  );
+}
+
+function IconFormation() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-2">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M12 4v16" />
+      <circle cx="8" cy="8" r="1.3" />
+      <circle cx="8" cy="16" r="1.3" />
+      <circle cx="16" cy="12" r="1.3" />
+    </svg>
+  );
+}
+
+function IconStarPlayer() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-2">
+      <path d="M12 3l2.2 4.8L19 8.5l-3.5 3.4.8 4.8L12 14.9 7.7 16.7l.8-4.8L5 8.5l4.8-.7L12 3z" />
+    </svg>
+  );
+}
+
+function IconBall() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-2">
+      <circle cx="12" cy="12" r="8" />
+      <path d="M9 9l3-2 3 2v3l-3 2-3-2z" />
+    </svg>
+  );
+}
+
 function TeamLogo({ team }: { team: any }) {
   const logoSrc = getTeamLogoSrc(team);
 
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 sm:h-12 sm:w-12">
+    <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border sm:h-12 sm:w-12"
+      style={{
+        borderColor: "var(--border)",
+      }}
+    >
       {logoSrc ? (
         <img
           src={logoSrc}
           alt={team.name}
           className="h-6 w-6 object-contain sm:h-7 sm:w-7"
           loading="lazy"
+          
         />
       ) : (
-        <span className="text-[10px] font-bold text-white/55">
+        <span className="text-[10px] font-bold">
           {(team.shortName || team.name).slice(0, 3)}
         </span>
       )}
@@ -898,24 +992,62 @@ function TeamLogo({ team }: { team: any }) {
   );
 }
 
-function TeamHeaderCompact({
+function TeamSwitchCard({
   team,
-  sideLabel,
+  side,
+  active,
+  score,
+  onClick,
 }: {
   team: any;
-  sideLabel: string;
+  side: TeamSide;
+  active: boolean;
+  score: number;
+  onClick: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-4 rounded-[28px] border px-4 py-4 text-left transition hover:opacity-95"
+      style={{
+        borderColor: active ? "var(--accent)" : "var(--border)",
+        background: active ? "var(--accent-soft)" : "var(--panel-solid)",
+        color: "var(--text)",
+      }}
+    >
       <TeamLogo team={team} />
-      <div className="min-w-0">
-        <div className="text-[11px] uppercase tracking-[0.2em] text-white/35">
-          {sideLabel}
+      <div className="min-w-0 flex-1">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">
+          {getSideLabel(side)}
         </div>
-        <div className="truncate text-[15px] font-semibold text-white sm:text-base">
-          {team.name}
-        </div>
+        <div className="mt-1 truncate text-lg font-black">{team.name}</div>
       </div>
+      <div className="flex h-12 min-w-[52px] items-center justify-center rounded-2xl border border-black/10 bg-black/5 px-3 text-2xl font-black dark:border-white/10 dark:bg-black/10">
+        {score}
+      </div>
+    </button>
+  );
+}
+
+function EventBadge({
+  children,
+  title,
+  className = "",
+}: {
+  children: React.ReactNode;
+  title?: string;
+  className?: string;
+}) {
+  return (
+    <div
+      title={title}
+      className={[
+        "inline-flex h-5 min-w-[20px] items-center justify-center rounded-full border border-white/10 bg-black/85 px-1.5 text-[9px] font-black text-white shadow-[0_4px_12px_rgba(0,0,0,0.25)]",
+        className,
+      ].join(" ")}
+    >
+      {children}
     </div>
   );
 }
@@ -1002,6 +1134,8 @@ function HalfPitchSvg({
   formation,
   players,
   lineup,
+  scorerState,
+  predictedMvpPlayerId,
   onOpenSlot,
   onRemoveFromSlot,
 }: {
@@ -1010,6 +1144,8 @@ function HalfPitchSvg({
   formation: string;
   players: PlayerLite[];
   lineup: LineupStateItem[];
+  scorerState: ScorerStateItem[];
+  predictedMvpPlayerId?: string | null;
   onOpenSlot: (slot: PitchSlot) => void;
   onRemoveFromSlot: (slot: PitchSlot) => void;
 }) {
@@ -1020,18 +1156,18 @@ function HalfPitchSvg({
   }, [players]);
 
   return (
-    <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3 sm:p-4">
+    <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-gradient-mid)] p-3 sm:p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-white">
+          <div className="truncate text-sm font-semibold text-[var(--foreground)]">
             {teamName}
           </div>
-          <div className="text-[11px] text-white/40">
+          <div className="text-[11px] text-[var(--text-muted)]">
             Натисни на позицію, щоб вибрати гравця
           </div>
         </div>
 
-        <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[11px] text-white/60">
+        <div className="rounded-full border border-[var(--border)] bg-[var(--background)] px-3 py-1 text-[11px] text-[var(--foreground)] dark:border-white/10 dark:bg-white/[0.04] dark:text-white/60">
           {formation}
         </div>
       </div>
@@ -1052,7 +1188,7 @@ function HalfPitchSvg({
           {Array.from({ length: 8 }).map((_, i) => (
             <div
               key={i}
-              className="absolute top-0 bottom-0"
+              className="absolute bottom-0 top-0"
               style={{
                 left: `${(i * 100) / 8}%`,
                 width: `${100 / 8}%`,
@@ -1061,103 +1197,10 @@ function HalfPitchSvg({
             />
           ))}
 
-          <div
-            className="absolute inset-0"
-            style={{
-              transform: side === "AWAY" ? "scaleY(-1)" : "none",
-              transformOrigin: "center",
-            }}
-          >
-            <svg viewBox="0 0 100 140" className="absolute inset-0 h-full w-full">
-              <rect
-                x="4.5"
-                y="4.5"
-                width="91"
-                height="131"
-                rx="2"
-                fill="none"
-                stroke="rgba(255,255,255,0.92)"
-                strokeWidth="0.8"
-              />
-
-              <line
-                x1="4.5"
-                x2="95.5"
-                y1="70"
-                y2="70"
-                stroke="rgba(255,255,255,0.92)"
-                strokeWidth="0.8"
-              />
-
-              <circle
-                cx="50"
-                cy="70"
-                r="10"
-                fill="none"
-                stroke="rgba(255,255,255,0.92)"
-                strokeWidth="0.8"
-              />
-              <circle cx="50" cy="70" r="1" fill="rgba(255,255,255,0.92)" />
-
-              <rect
-                x="21"
-                y="4.5"
-                width="58"
-                height="22"
-                fill="none"
-                stroke="rgba(255,255,255,0.92)"
-                strokeWidth="0.8"
-              />
-
-              <rect
-                x="34"
-                y="4.5"
-                width="32"
-                height="10"
-                fill="none"
-                stroke="rgba(255,255,255,0.92)"
-                strokeWidth="0.8"
-              />
-
-              <circle cx="50" cy="20" r="1" fill="rgba(255,255,255,0.92)" />
-
-              <path
-                d="M 41 26 A 10 10 0 0 0 59 26"
-                fill="none"
-                stroke="rgba(255,255,255,0.92)"
-                strokeWidth="0.8"
-              />
-
-              <rect
-                x="21"
-                y="113.5"
-                width="58"
-                height="22"
-                fill="none"
-                stroke="rgba(255,255,255,0.92)"
-                strokeWidth="0.8"
-              />
-
-              <rect
-                x="34"
-                y="125.5"
-                width="32"
-                height="10"
-                fill="none"
-                stroke="rgba(255,255,255,0.92)"
-                strokeWidth="0.8"
-              />
-
-              <circle cx="50" cy="120" r="1" fill="rgba(255,255,255,0.92)" />
-
-              <path
-                d="M 41 114 A 10 10 0 0 1 59 114"
-                fill="none"
-                stroke="rgba(255,255,255,0.92)"
-                strokeWidth="0.8"
-              />
-            </svg>
-          </div>
+          <div className="absolute inset-0 border border-white/10" />
+          <div className="absolute bottom-[6%] left-[8%] right-[8%] top-[6%] rounded-[18px] border border-white/20" />
+          <div className="absolute bottom-[6%] left-1/2 top-[6%] w-px -translate-x-1/2 bg-white/20" />
+          <div className="absolute left-1/2 top-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/20" />
 
           {slots.map((slot) => {
             const pick = getPlayerForSlot(lineup, side, slot);
@@ -1190,6 +1233,9 @@ function HalfPitchSvg({
             const player = playerMap.get(pick.playerId);
             if (!player) return null;
 
+            const scorerMeta = getScorerForPlayer(scorerState, player.id, side);
+            const isMvp = predictedMvpPlayerId === player.id;
+
             return (
               <div
                 key={`filled-${slot.key}`}
@@ -1199,12 +1245,24 @@ function HalfPitchSvg({
                   top: `${slot.y}%`,
                 }}
               >
-                <LineupCard
-                  player={player}
-                  slotLabel={slot.label}
-                  onClick={() => onOpenSlot(slot)}
-                  onRemove={() => onRemoveFromSlot(slot)}
-                />
+                <div className="relative">
+                  <div className="absolute -right-1.5 -top-1.5 z-30 flex flex-col items-end gap-1">
+                    {isMvp ? <EventBadge title="MVP">★</EventBadge> : null}
+                    {scorerMeta?.isFirstGoalScorer ? (
+                      <EventBadge title="Перший гол">1st</EventBadge>
+                    ) : null}
+                    {scorerMeta ? (
+                      <EventBadge title="Голи">⚽{scorerMeta.goalsCount}</EventBadge>
+                    ) : null}
+                  </div>
+
+                  <LineupCard
+                    player={player}
+                    slotLabel={slot.label}
+                    onClick={() => onOpenSlot(slot)}
+                    onRemove={() => onRemoveFromSlot(slot)}
+                  />
+                </div>
               </div>
             );
           })}
@@ -1267,276 +1325,284 @@ function PlayerPickerModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/72 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[#0c1116]">
-        <div className="border-b border-white/8 px-4 py-4 sm:px-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-white/35">
-                Picker
-              </div>
-              <div className="mt-1 text-lg font-semibold text-white">
-                {title}
-              </div>
-              {subtitle ? (
-                <div className="mt-1 text-sm text-white/45">{subtitle}</div>
-              ) : null}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:items-center sm:p-6">
+      <div
+        className="w-full max-w-2xl overflow-hidden rounded-[28px] border shadow-[0_25px_80px_rgba(0,0,0,0.28)]"
+        style={{
+          borderColor: "var(--border)",
+          background: "var(--panel-solid)",
+          color: "var(--text)",
+        }}
+      >
+        <div
+          className="flex items-start justify-between gap-3 border-b px-4 py-4 sm:px-5"
+          style={{
+            borderColor: "var(--border)",
+          }}
+        >
+          <div className="min-w-0">
+            <div className="truncate text-lg font-black">
+              {title}
             </div>
 
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/75 transition hover:bg-white/10 hover:text-white"
-            >
-              Закрити
-            </button>
-          </div>
-
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Пошук гравця..."
-            className="mt-4 h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm text-white outline-none placeholder:text-white/25"
-          />
-        </div>
-
-        <div className="max-h-[62vh] overflow-y-auto p-3 sm:p-4">
-          <div className="space-y-2">
-            {filteredPlayers.map((player) => {
-              const isDisabled = disabledIds.has(player.id);
-
-              return (
-                <button
-                  key={player.id}
-                  type="button"
-                  disabled={isDisabled}
-                  onClick={() => onPick(player.id)}
-                  className="flex w-full items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-3 text-left transition hover:border-white/15 hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:opacity-35"
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5">
-                    {player.photo ? (
-                      <img
-                        src={player.photo}
-                        alt={player.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-[10px] font-bold text-white/65">
-                        {getShortPlayerName(player).slice(0, 2).toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-white">
-                      {player.name}
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-white/40">
-                      #{player.shirtNumber ?? "--"} · {getPositionLabel(player.position)}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-
-            {filteredPlayers.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-5 text-sm text-white/40">
-                Нічого не знайдено
+            {subtitle ? (
+              <div
+                className="mt-1 text-sm"
+                style={{ color: "var(--text-soft)" }}
+              >
+                {subtitle}
               </div>
             ) : null}
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-function ScorerPickerRow({
-  teamName,
-  goalsLimit,
-  players,
-  scorers,
-  onAdd,
-  onOpen,
-  onRemove,
-  onGoalsCountChange,
-}: {
-  teamName: string;
-  goalsLimit: number;
-  players: PlayerLite[];
-  scorers: ScorerStateItem[];
-  onAdd: () => void;
-  onOpen: (scorerId: string) => void;
-  onRemove: (scorerId: string) => void;
-  onGoalsCountChange: (scorerId: string, value: number) => void;
-}) {
-  const playerMap = new Map(players.map((p) => [p.id, p]));
-  const total = scorers.reduce((sum, item) => sum + item.goalsCount, 0);
-
-  return (
-    <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-semibold text-white">{teamName}</div>
-          <div className="mt-0.5 text-[11px] text-white/40">
-            Розподілено {total} з {goalsLimit}
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition hover:opacity-90"
+            style={{
+              borderColor: "var(--border)",
+              background: "var(--panel)",
+              color: "var(--text)",
+            }}
+          >
+            ×
+          </button>
         </div>
 
-        <button
-          type="button"
-          onClick={onAdd}
-          disabled={total >= goalsLimit || players.length === 0}
-          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/75 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
+        <div
+          className="border-b px-4 py-4 sm:px-5"
+          style={{
+            borderColor: "var(--border)",
+          }}
         >
-          Додати
-        </button>
-      </div>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Пошук по імені, short name або номеру"
+            className="h-11 w-full rounded-2xl border px-4 text-sm outline-none"
+            style={{
+              borderColor: "var(--border)",
+              background: "var(--panel)",
+              color: "var(--text)",
+            }}
+          />
+        </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        {scorers.length > 0 ? (
-          scorers.map((scorer) => {
-            const player = playerMap.get(scorer.playerId);
-            if (!player) return null;
-
-            return (
+        <div className="max-h-[65vh] overflow-y-auto px-4 py-4 sm:px-5">
+          <div className="space-y-2">
+            {filteredPlayers.length === 0 ? (
               <div
-                key={scorer.id}
-                className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] pr-2"
+                className="rounded-2xl border border-dashed px-4 py-8 text-center text-sm"
+                style={{
+                  borderColor: "var(--border)",
+                  background: "var(--card-highlight)",
+                  color: "var(--text-soft)",
+                }}
               >
-                <button
-                  type="button"
-                  onClick={() => onOpen(scorer.id)}
-                  className="flex items-center gap-2 rounded-full px-2 py-2 transition hover:bg-white/[0.04]"
-                >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5">
-                    {player.photo ? (
-                      <img
-                        src={player.photo}
-                        alt={player.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-[10px] font-bold text-white/65">
-                        {getShortPlayerName(player).slice(0, 2).toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="max-w-[110px] truncate text-[12px] font-semibold text-white">
-                    {getShortPlayerName(player)}
-                  </div>
-                </button>
-
-                <input
-                  type="number"
-                  min={1}
-                  max={goalsLimit || 1}
-                  value={scorer.goalsCount}
-                  onChange={(e) =>
-                    onGoalsCountChange(
-                      scorer.id,
-                      Math.max(1, Number(e.target.value) || 1)
-                    )
-                  }
-                  className="h-8 w-12 rounded-full border border-white/10 bg-white/[0.04] px-2 text-center text-sm text-white outline-none"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => onRemove(scorer.id)}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[11px] text-white/55 transition hover:bg-white/10 hover:text-white"
-                >
-                  ×
-                </button>
+                Нічого не знайдено.
               </div>
-            );
-          })
-        ) : (
-          <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-4 text-sm text-white/40">
-            Поки не вибрано авторів голів
+            ) : (
+              filteredPlayers.map((player) => {
+                const disabled = disabledIds.has(player.id);
+                const isCurrent = currentPlayerId === player.id;
+
+                return (
+                  <button
+                    key={player.id}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => onPick(player.id)}
+                    className="flex w-full items-center justify-between gap-3 rounded-[22px] border px-4 py-3 text-left transition"
+                    style={{
+                      borderColor: isCurrent
+                        ? "var(--accent)"
+                        : "var(--border)",
+                      background: isCurrent
+                        ? "var(--accent-soft)"
+                        : "var(--panel)",
+                      color: "var(--text)",
+                      opacity: disabled ? 0.4 : 1,
+                      cursor: disabled ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div
+                        className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border"
+                        style={{
+                          borderColor: "var(--border)",
+                          background: "var(--card-highlight)",
+                        }}
+                      >
+                        {player.photo ? (
+                          <img
+                            src={player.photo}
+                            alt={player.name}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span
+                            className="text-[10px] font-bold"
+                            style={{ color: "var(--text-soft)" }}
+                          >
+                            {getShortPlayerName(player).slice(0, 2).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold">
+                          {player.name}
+                        </div>
+                        <div
+                          className="text-xs"
+                          style={{ color: "var(--muted)" }}
+                        >
+                          {player.shirtNumber ? `#${player.shirtNumber} · ` : ""}
+                          {getPositionLabel(player.position)}
+                          {player.isInjured ? " · травма" : ""}
+                          {player.isSuspended ? " · дискваліфікація" : ""}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      className="shrink-0 text-xs font-semibold"
+                      style={{
+                        color: isCurrent
+                          ? "var(--accent)"
+                          : "var(--muted)",
+                      }}
+                    >
+                      {isCurrent ? "Обрано" : disabled ? "Зайнято" : "Вибрати"}
+                    </div>
+                  </button>
+                );
+              })
+            )}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
 }
 
 export default function PredictAdvancedPage() {
-  const { game, match, prediction, isLocked, predictionDeadline } =
-    useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>();
+  const { match, prediction, isLocked } = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>() as ActionData | undefined;
   const navigation = useNavigation();
 
-  const [predictedHome, setPredictedHome] = useState(
+  const [activeTab, setActiveTab] = useState<AdvancedTab>("overview");
+  const [activeTeamSide, setActiveTeamSide] = useState<TeamSide>("HOME");
+  const [predictedHome, setPredictedHome] = useState<number>(
     prediction?.predictedHome ?? 0
   );
-  const [predictedAway, setPredictedAway] = useState(
+  const [predictedAway, setPredictedAway] = useState<number>(
     prediction?.predictedAway ?? 0
   );
-  const [predictedHomeFormation, setPredictedHomeFormation] = useState(
-    prediction?.predictedHomeFormation ?? "4-3-3"
+  const [predictedHomeFormation, setPredictedHomeFormation] = useState<string>(
+    prediction?.predictedHomeFormation || "4-3-3"
   );
-  const [predictedAwayFormation, setPredictedAwayFormation] = useState(
-    prediction?.predictedAwayFormation ?? "4-3-3"
+  const [predictedAwayFormation, setPredictedAwayFormation] = useState<string>(
+    prediction?.predictedAwayFormation || "4-3-3"
   );
-  const [predictedMvpPlayerId, setPredictedMvpPlayerId] = useState(
-    prediction?.predictedMvpPlayerId ?? ""
+  const [predictedMvpPlayerId, setPredictedMvpPlayerId] = useState<string>(
+    prediction?.predictedMvpPlayerId || ""
   );
-  const [notes, setNotes] = useState(prediction?.notes ?? "");
+  const [notes, setNotes] = useState<string>(prediction?.notes || "");
+  const [lineupState, setLineupState] = useState<LineupStateItem[]>(
+    normalizeLineupPayload(prediction?.lineupPicks ?? [])
+  );
+  const [scorerState, setScorerState] = useState<ScorerStateItem[]>(
+    normalizeScorersPayload(prediction?.scorerPicks ?? [])
+  );
   const [activeSlot, setActiveSlot] = useState<ActiveSlotState>(null);
-  const [activeScorer, setActiveScorer] = useState<ActiveScorerState>(null);
-  const [selectedTeamSide, setSelectedTeamSide] = useState<TeamSide>("HOME");
-
-  const [scorers, setScorers] = useState<ScorerStateItem[]>(
-    (prediction?.scorerPicks ?? []).map((item: any, index: number) => ({
-      id: item.id ? String(item.id) : createLocalId(),
-      playerId: item.playerId,
-      teamSide: item.teamSide,
-      goalsCount: item.goalsCount ?? 1,
-      isFirstGoalScorer: item.isFirstGoalScorer ?? false,
-      order: item.order ?? index,
-    }))
-  );
-
-  const [lineup, setLineup] = useState<LineupStateItem[]>(
-    (prediction?.lineupPicks ?? []).map((item: any, index: number) => ({
-      playerId: item.playerId,
-      teamSide: item.teamSide,
-      isStarter: item.isStarter ?? true,
-      isCaptain: false,
-      predictedRole: item.predictedRole ?? "STARTER",
-      predictedPositionLabel: item.predictedPositionLabel ?? null,
-      order: item.order ?? index,
-    }))
-  );
+  const [isScorerPickerOpen, setIsScorerPickerOpen] = useState(false);
+  const [isMvpPickerOpen, setIsMvpPickerOpen] = useState(false);
 
   const isSubmitting = navigation.state === "submitting";
 
-  const mvpOptions = useMemo(
-    () => [...match.homeTeam.players, ...match.awayTeam.players],
-    [match.homeTeam.players, match.awayTeam.players]
+  const homePlayers = useMemo(
+    () => sortPlayersForPicker(match.homeTeam.players || []),
+    [match.homeTeam.players]
+  );
+  const awayPlayers = useMemo(
+    () => sortPlayersForPicker(match.awayTeam.players || []),
+    [match.awayTeam.players]
   );
 
-  const homeScorers = scorers.filter((item) => item.teamSide === "HOME");
-  const awayScorers = scorers.filter((item) => item.teamSide === "AWAY");
+  const activeTeam = activeTeamSide === "HOME" ? match.homeTeam : match.awayTeam;
+  const activePlayers = activeTeamSide === "HOME" ? homePlayers : awayPlayers;
+  const activeFormation =
+    activeTeamSide === "HOME" ? predictedHomeFormation : predictedAwayFormation;
+  const activeGoalTarget = activeTeamSide === "HOME" ? predictedHome : predictedAway;
+  const activeGoalsAssigned = countGoalsForSide(scorerState, activeTeamSide);
+  const activeGoalsRemaining = getGoalsRemainingForSide(
+    scorerState,
+    activeTeamSide,
+    predictedHome,
+    predictedAway
+  );
 
-  const selectedTeam =
-    selectedTeamSide === "HOME" ? match.homeTeam : match.awayTeam;
-  const selectedFormation =
-    selectedTeamSide === "HOME"
-      ? predictedHomeFormation
-      : predictedAwayFormation;
-  const selectedGoalsLimit =
-    selectedTeamSide === "HOME" ? predictedHome : predictedAway;
-  const selectedTeamPlayers =
-    selectedTeamSide === "HOME"
-      ? match.homeTeam.players
-      : match.awayTeam.players;
-  const selectedTeamScorers =
-    selectedTeamSide === "HOME" ? homeScorers : awayScorers;
+  const lineupSelectedIds = useMemo(() => {
+    const ids = new Set(
+      lineupState
+        .filter((item) => item.teamSide === activeTeamSide && item.isStarter)
+        .map((item) => item.playerId)
+    );
+
+    const current = activeSlot
+      ? getPlayerForSlot(lineupState, activeSlot.side, activeSlot.slot)?.playerId
+      : null;
+
+    if (current) ids.delete(current);
+
+    return ids;
+  }, [lineupState, activeSlot, activeTeamSide]);
+
+  const currentLineupPlayers = useMemo(() => {
+    if (!activeSlot) return [];
+    const teamPlayers = activeSlot.side === "HOME" ? homePlayers : awayPlayers;
+    return sortPlayersForPicker(
+      filterPlayersForSlot(teamPlayers, activeSlot.slot.line)
+    );
+  }, [activeSlot, homePlayers, awayPlayers]);
+
+  const currentLineupPlayerId = useMemo(() => {
+    if (!activeSlot) return null;
+    return (
+      getPlayerForSlot(lineupState, activeSlot.side, activeSlot.slot)?.playerId ??
+      null
+    );
+  }, [activeSlot, lineupState]);
+
+  const currentScorerPlayers = useMemo(() => {
+    const starterIds = getStarterPlayerIdsForSide(lineupState, activeTeamSide);
+    return activePlayers.filter(
+      (player) =>
+        starterIds.has(player.id) ||
+        Boolean(getScorerForPlayer(scorerState, player.id, activeTeamSide))
+    );
+  }, [activePlayers, lineupState, scorerState, activeTeamSide]);
+
+  const currentMvpPlayers = useMemo(() => {
+    const starterIds = getStarterPlayerIdsForSide(lineupState, activeTeamSide);
+    return activePlayers.filter((player) => starterIds.has(player.id));
+  }, [activePlayers, lineupState, activeTeamSide]);
+
+  const activeSideScorers = useMemo(
+    () => getScorersForSide(scorerState, activeTeamSide),
+    [scorerState, activeTeamSide]
+  );
+
+  const activeMvpPlayer =
+    activePlayers.find((p) => p.id === predictedMvpPlayerId) ?? null;
 
   function openSlot(side: TeamSide, slot: PitchSlot) {
+    if (isLocked) return;
+    if (activeTab !== "lineup") {
+      setActiveTab("lineup");
+    }
+    setActiveTeamSide(side);
     setActiveSlot({ mode: "LINEUP", side, slot });
   }
 
@@ -1547,7 +1613,7 @@ export default function PredictAdvancedPage() {
   function handlePickPlayerForActiveSlot(playerId: string) {
     if (!activeSlot) return;
 
-    setLineup((prev) =>
+    setLineupState((prev) =>
       upsertPlayerIntoSlot({
         lineup: prev,
         side: activeSlot.side,
@@ -1560,7 +1626,7 @@ export default function PredictAdvancedPage() {
   }
 
   function handleRemoveFromSlot(side: TeamSide, slot: PitchSlot) {
-    setLineup((prev) =>
+    setLineupState((prev) =>
       removePlayerFromSlot({
         lineup: prev,
         side,
@@ -1569,243 +1635,123 @@ export default function PredictAdvancedPage() {
     );
   }
 
-  function addScorer(side: TeamSide) {
-    const teamPlayers =
-      side === "HOME" ? match.homeTeam.players : match.awayTeam.players;
+  function openScorerPicker() {
+    if (isLocked || activeGoalsRemaining <= 0) return;
+    setActiveTab("events");
+    setIsScorerPickerOpen(true);
+  }
 
-    const teamScorers = scorers.filter((item) => item.teamSide === side);
-    const maxGoals = side === "HOME" ? predictedHome : predictedAway;
-    const total = teamScorers.reduce((sum, item) => sum + item.goalsCount, 0);
+  function closeScorerPicker() {
+    setIsScorerPickerOpen(false);
+  }
 
-    if (teamPlayers.length === 0 || total >= maxGoals) return;
+  function handlePickScorer(playerId: string) {
+    if (activeGoalsRemaining <= 0) return;
 
-    const newScorerId = createLocalId();
+    const existing = getScorerForPlayer(scorerState, playerId, activeTeamSide);
 
-    setScorers((prev) => [
+    if (existing) {
+      updateScorerGoals(playerId, activeTeamSide, existing.goalsCount + 1);
+      setIsScorerPickerOpen(false);
+      return;
+    }
+
+    setScorerState((prev) => [
       ...prev,
       {
-        id: newScorerId,
-        playerId: teamPlayers[0].id,
-        teamSide: side,
+        id: createLocalId(),
+        playerId,
+        teamSide: activeTeamSide,
         goalsCount: 1,
-        isFirstGoalScorer: false,
+        isFirstGoalScorer: !hasFirstGoalScorerForSide(prev, activeTeamSide),
         order: prev.length,
       },
     ]);
 
-    setActiveScorer({
-      mode: "SCORER",
-      scorerId: newScorerId,
-      side,
+    setIsScorerPickerOpen(false);
+  }
+
+  function updateScorerGoals(playerId: string, side: TeamSide, nextGoals: number) {
+    const currentItem = getScorerForPlayer(scorerState, playerId, side);
+    const currentGoals = currentItem?.goalsCount ?? 0;
+    const target = side === "HOME" ? predictedHome : predictedAway;
+    const sideTotal = countGoalsForSide(scorerState, side);
+    const nextTotal = sideTotal - currentGoals + Math.max(0, nextGoals);
+
+    if (nextTotal > target) return;
+
+    setScorerState((prev) => {
+      if (nextGoals <= 0) {
+        const removed = prev.filter(
+          (item) => !(item.playerId === playerId && item.teamSide === side)
+        );
+
+        const removedWasFirst = prev.find(
+          (item) => item.playerId === playerId && item.teamSide === side
+        )?.isFirstGoalScorer;
+
+        if (removedWasFirst) {
+          const firstRemainingIndex = removed.findIndex((item) => item.teamSide === side);
+          if (firstRemainingIndex !== -1) {
+            const cloned = [...removed];
+            cloned[firstRemainingIndex] = {
+              ...cloned[firstRemainingIndex],
+              isFirstGoalScorer: true,
+            };
+            return cloned;
+          }
+        }
+
+        return removed;
+      }
+
+      const exists = prev.some(
+        (item) => item.playerId === playerId && item.teamSide === side
+      );
+
+      if (exists) {
+        return prev.map((item) =>
+          item.playerId === playerId && item.teamSide === side
+            ? { ...item, goalsCount: nextGoals }
+            : item
+        );
+      }
+
+      return [
+        ...prev,
+        {
+          id: createLocalId(),
+          playerId,
+          teamSide: side,
+          goalsCount: nextGoals,
+          isFirstGoalScorer: !hasFirstGoalScorerForSide(prev, side),
+          order: prev.length,
+        },
+      ];
     });
   }
 
-  function openScorerPicker(side: TeamSide, scorerId: string) {
-    setActiveScorer({
-      mode: "SCORER",
-      scorerId,
-      side,
-    });
-  }
-
-  function closeScorerPicker() {
-    setActiveScorer(null);
-  }
-
-  function handlePickScorer(playerId: string) {
-    if (!activeScorer) return;
-
-    setScorers((prev) =>
+  function setFirstGoalScorer(playerId: string, side: TeamSide) {
+    setScorerState((prev) =>
       prev.map((item) =>
-        item.id === activeScorer.scorerId ? { ...item, playerId } : item
+        item.teamSide !== side
+          ? item
+          : {
+              ...item,
+              isFirstGoalScorer: item.playerId === playerId,
+            }
       )
     );
-
-    setActiveScorer(null);
   }
 
-  function removeScorer(scorerId: string) {
-    setScorers((prev) => prev.filter((item) => item.id !== scorerId));
-
-    setActiveScorer((prev) => {
-      if (!prev) return null;
-      if (prev.scorerId === scorerId) return null;
-      return prev;
-    });
+  function toggleMvp(playerId: string) {
+    setPredictedMvpPlayerId((prev) => (prev === playerId ? "" : playerId));
+    setIsMvpPickerOpen(false);
   }
-
-  function changeScorerGoals(scorerId: string, value: number) {
-    setScorers((prev) =>
-      prev.map((item) =>
-        item.id === scorerId
-          ? { ...item, goalsCount: Math.max(1, value || 1) }
-          : item
-      )
-    );
-  }
-
-  const currentLineupPlayers = useMemo(() => {
-    if (!activeSlot) return [];
-
-    const teamPlayers =
-      activeSlot.side === "HOME"
-        ? match.homeTeam.players
-        : match.awayTeam.players;
-
-    return sortPlayersForPicker(
-      filterPlayersForSlot(teamPlayers, activeSlot.slot.line)
-    );
-  }, [activeSlot, match.homeTeam.players, match.awayTeam.players]);
-
-  const lineupSelectedIds = useMemo(() => {
-    if (!activeSlot) return new Set<string>();
-
-    return new Set(
-      lineup
-        .filter((item) => item.teamSide === activeSlot.side && item.isStarter)
-        .map((item) => item.playerId)
-    );
-  }, [activeSlot, lineup]);
-
-  const currentLineupPlayerId = useMemo(() => {
-    if (!activeSlot) return null;
-    return (
-      getPlayerForSlot(lineup, activeSlot.side, activeSlot.slot)?.playerId ??
-      null
-    );
-  }, [activeSlot, lineup]);
-
-  const currentScorerPlayers = useMemo(() => {
-    if (!activeScorer) return [];
-
-    const teamPlayers =
-      activeScorer.side === "HOME"
-        ? match.homeTeam.players
-        : match.awayTeam.players;
-
-    return sortPlayersForPicker(teamPlayers);
-  }, [activeScorer, match.homeTeam.players, match.awayTeam.players]);
-
-  const currentScorerPlayerId = useMemo(() => {
-    if (!activeScorer) return null;
-    return (
-      scorers.find((item) => item.id === activeScorer.scorerId)?.playerId ??
-      null
-    );
-  }, [activeScorer, scorers]);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <section className="space-y-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/40">
-              Advanced Predict
-            </p>
-            <h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">
-              Детальний прогноз
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">
-              Рахунок, автори голів, схема та склади двох команд.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Link
-              to={`../predict?matchId=${match.id}`}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/75 transition hover:bg-white/10 hover:text-white"
-            >
-              Назад
-            </Link>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="hidden sm:block">
-              <TeamHeaderCompact team={match.homeTeam} sideLabel="Home" />
-            </div>
-
-            <div className="flex-1 text-center">
-              <div className="text-[11px] uppercase tracking-[0.2em] text-white/35">
-                {match.tournament?.name}
-              </div>
-              <div className="mt-1 text-sm font-semibold text-white">
-                {formatMatchDateTime(match.startTime)}
-              </div>
-              <div className="mt-1 text-[11px] text-white/40">
-                Deadline: {formatMatchDateTime(predictionDeadline)}
-              </div>
-            </div>
-
-            <div className="hidden sm:block">
-              <TeamHeaderCompact team={match.awayTeam} sideLabel="Away" />
-            </div>
-          </div>
-        </div>
-
-        <section className="block xl:hidden">
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setSelectedTeamSide("HOME")}
-              className={`rounded-2xl border px-4 py-4 text-left transition ${
-                selectedTeamSide === "HOME"
-                  ? "border-white/20 bg-white/[0.08]"
-                  : "border-white/8 bg-white/[0.03]"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <TeamLogo team={match.homeTeam} />
-                <div className="min-w-0">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-                    Home
-                  </div>
-                  <div className="truncate text-sm font-semibold text-white">
-                    {match.homeTeam.name}
-                  </div>
-                </div>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setSelectedTeamSide("AWAY")}
-              className={`rounded-2xl border px-4 py-4 text-left transition ${
-                selectedTeamSide === "AWAY"
-                  ? "border-white/20 bg-white/[0.08]"
-                  : "border-white/8 bg-white/[0.03]"
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <TeamLogo team={match.awayTeam} />
-                <div className="min-w-0">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-                    Away
-                  </div>
-                  <div className="truncate text-sm font-semibold text-white">
-                    {match.awayTeam.name}
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-        </section>
-      </section>
-
-      {actionData?.error ? (
-        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-4 text-sm text-red-100">
-          {actionData.error}
-        </div>
-      ) : null}
-
-      {isLocked ? (
-        <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-4 text-sm text-amber-100">
-          Прогноз на цей матч уже закритий.
-        </div>
-      ) : null}
-
-      <Form method="post" className="space-y-6">
+    <div className="theme-page mx-auto max-w-7xl space-y-4 pb-8">
+      <Form method="post" className="space-y-4">
         <input type="hidden" name="predictedHome" value={predictedHome} />
         <input type="hidden" name="predictedAway" value={predictedAway} />
         <input
@@ -1824,271 +1770,499 @@ export default function PredictAdvancedPage() {
           value={predictedMvpPlayerId}
         />
         <input type="hidden" name="notes" value={notes} />
-        <input type="hidden" name="scorersJson" value={JSON.stringify(scorers)} />
-        <input type="hidden" name="lineupJson" value={JSON.stringify(lineup)} />
+        <input type="hidden" name="lineupJson" value={JSON.stringify(lineupState)} />
+        <input type="hidden" name="scorersJson" value={JSON.stringify(scorerState)} />
 
-        <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 sm:p-5">
-          <div className="mb-4">
-            <div className="text-lg font-semibold text-white">Рахунок</div>
-            <div className="mt-1 text-sm text-white/45">
-              Вкажи свій прогнозований результат матчу
+        <section className="theme-panel rounded-[30px] border px-4 py-4 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground)]">
+                <IconBall />
+                Advanced predict
+              </div>
+
+              <h1 className="mt-3 text-2xl font-black">Детальний прогноз</h1>
+
+              <div className="mt-2 text-sm text-[--text-muted]">
+                {match.homeTeam.name} — {match.awayTeam.name}
+              </div>
+              <div className="mt-1 text-sm text-[var(--text-muted)]">
+                {formatMatchDateTime(match.startTime)}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Link
+                to={`../predict?matchId=${match.id}`}
+                className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.05] dark:text-white/75 dark:hover:bg-white/[0.08] dark:hover:text-white"
+              >
+                <IconScore />
+                Назад
+              </Link>
+
+              <button
+                type="submit"
+                disabled={isLocked || isSubmitting}
+                className="inline-flex h-11 items-center gap-2 rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-white/90"
+              >
+                <IconStarPlayer />
+                {isSubmitting ? "Зберігаю..." : "Зберегти прогноз"}
+              </button>
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
-              <div className="mb-2 text-sm font-semibold text-white">
-                {match.homeTeam.name}
+          {actionData?.error ? (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-200">
+              {actionData.error}
+            </div>
+          ) : null}
+
+          {isLocked ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-yellow-400/20 dark:bg-yellow-500/10 dark:text-yellow-100">
+              Прогноз на цей матч уже закритий. Перегляд доступний, але редагування вимкнено.
+            </div>
+          ) : null}
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-2">
+          <TeamSwitchCard
+            team={match.homeTeam}
+            side="HOME"
+            active={activeTeamSide === "HOME"}
+            score={predictedHome}
+            onClick={() => setActiveTeamSide("HOME")}
+          />
+          <TeamSwitchCard
+            team={match.awayTeam}
+            side="AWAY"
+            active={activeTeamSide === "AWAY"}
+            score={predictedAway}
+            onClick={() => setActiveTeamSide("AWAY")}
+          />
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_380px]">
+          <div className="space-y-4">
+            <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-sm sm:p-5">
+              <div className="mb-4 flex flex-wrap gap-2">
+                {[
+                  { key: "overview", label: "Рахунок", icon: <IconScore /> },
+                  { key: "lineup", label: "Склад", icon: <IconFormation /> },
+                  { key: "events", label: "MVP + голи", icon: <IconStarPlayer /> },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveTab(tab.key as AdvancedTab)}
+                    className={[
+                      "inline-flex h-11 items-center gap-2 rounded-2xl border px-4 text-sm font-semibold transition",
+                      activeTab === tab.key
+                        ? "border-slate-300 bg-slate-900 text-white dark:border-white/20 dark:bg-white dark:text-black"
+                        : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.05] dark:text-white/70 dark:hover:bg-white/[0.08] dark:hover:text-white",
+                    ].join(" ")}
+                  >
+                    {tab.icon}
+                    {tab.label}
+                  </button>
+                ))}
               </div>
-              <input
-                type="number"
-                min={0}
-                value={predictedHome}
-                onChange={(e) =>
-                  setPredictedHome(Math.max(0, Number(e.target.value) || 0))
+
+              <HalfPitchSvg
+                side={activeTeamSide}
+                teamName={activeTeam.name}
+                formation={activeFormation}
+                players={activePlayers}
+                lineup={lineupState}
+                scorerState={scorerState}
+                predictedMvpPlayerId={predictedMvpPlayerId}
+                onOpenSlot={(slot) => openSlot(activeTeamSide, slot)}
+                onRemoveFromSlot={(slot) =>
+                  handleRemoveFromSlot(activeTeamSide, slot)
                 }
-                className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-lg font-semibold text-white outline-none"
-                disabled={isLocked}
               />
-            </div>
+            </section>
 
-            <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
-              <div className="mb-2 text-sm font-semibold text-white">
-                {match.awayTeam.name}
-              </div>
-              <input
-                type="number"
-                min={0}
-                value={predictedAway}
-                onChange={(e) =>
-                  setPredictedAway(Math.max(0, Number(e.target.value) || 0))
-                }
-                className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-lg font-semibold text-white outline-none"
-                disabled={isLocked}
-              />
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 sm:p-5">
-          <div className="mb-4">
-            <div className="text-lg font-semibold text-white">Хто заб’є</div>
-            <div className="mt-1 text-sm text-white/45">
-              Вибери авторів голів і кількість м’ячів
-            </div>
-          </div>
-
-          <div className="xl:hidden">
-            <ScorerPickerRow
-              teamName={selectedTeam.name}
-              goalsLimit={selectedGoalsLimit}
-              players={selectedTeamPlayers}
-              scorers={selectedTeamScorers}
-              onAdd={() => addScorer(selectedTeamSide)}
-              onOpen={(scorerId) => openScorerPicker(selectedTeamSide, scorerId)}
-              onRemove={(scorerId) => removeScorer(scorerId)}
-              onGoalsCountChange={(scorerId, value) =>
-                changeScorerGoals(scorerId, value)
-              }
-            />
-          </div>
-
-          <div className="hidden xl:grid xl:grid-cols-2 xl:gap-4">
-            <ScorerPickerRow
-              teamName={match.homeTeam.name}
-              goalsLimit={predictedHome}
-              players={match.homeTeam.players}
-              scorers={homeScorers}
-              onAdd={() => addScorer("HOME")}
-              onOpen={(scorerId) => openScorerPicker("HOME", scorerId)}
-              onRemove={(scorerId) => removeScorer(scorerId)}
-              onGoalsCountChange={(scorerId, value) =>
-                changeScorerGoals(scorerId, value)
-              }
-            />
-
-            <ScorerPickerRow
-              teamName={match.awayTeam.name}
-              goalsLimit={predictedAway}
-              players={match.awayTeam.players}
-              scorers={awayScorers}
-              onAdd={() => addScorer("AWAY")}
-              onOpen={(scorerId) => openScorerPicker("AWAY", scorerId)}
-              onRemove={(scorerId) => removeScorer(scorerId)}
-              onGoalsCountChange={(scorerId, value) =>
-                changeScorerGoals(scorerId, value)
-              }
-            />
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 sm:p-5">
-          <div className="mb-4">
-            <div className="text-lg font-semibold text-white">Схеми</div>
-            <div className="mt-1 text-sm text-white/45">Обери формацію</div>
-          </div>
-
-          <div className="xl:hidden">
-            <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
-              <div className="mb-2 text-sm font-semibold text-white">
-                {selectedTeam.name}
+            <section className="grid gap-4 sm:grid-cols-3">
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 text-slate-900 shadow-sm">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text)]">
+                  Активний клуб
+                </div>
+                <div className="mt-2 truncate text-lg font-black text-[var(--text)]">
+                  {activeTeam.name}
+                </div>
               </div>
 
-              <select
-                value={selectedFormation}
-                onChange={(e) => {
-                  if (selectedTeamSide === "HOME") {
-                    setPredictedHomeFormation(e.target.value);
-                  } else {
-                    setPredictedAwayFormation(e.target.value);
-                  }
-                }}
-                className="h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm text-white outline-none"
-                disabled={isLocked}
-              >
-                {FORMATIONS.map((item) => (
-                  <option key={item} value={item} className="text-black">
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="hidden xl:grid xl:grid-cols-2 xl:gap-3">
-            <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
-              <div className="mb-2 text-sm font-semibold text-white">
-                {match.homeTeam.name}
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 text-slate-900 shadow-sm">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text)]">
+                  Формація
+                </div>
+                <div className="mt-2 text-lg font-black text-[var(--text)]">{activeFormation}</div>
               </div>
-              <select
-                value={predictedHomeFormation}
-                onChange={(e) => setPredictedHomeFormation(e.target.value)}
-                className="h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm text-white outline-none"
-                disabled={isLocked}
-              >
-                {FORMATIONS.map((item) => (
-                  <option key={item} value={item} className="text-black">
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
 
-            <div className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
-              <div className="mb-2 text-sm font-semibold text-white">
-                {match.awayTeam.name}
+              <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 text-slate-900 shadow-sm">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text)]">
+                  Стартовий склад
+                </div>
+                <div className="mt-2 text-lg font-black text-[var(--text)]">
+                  {getStarterCountForSide(lineupState, activeTeamSide)} / 11
+                </div>
               </div>
-              <select
-                value={predictedAwayFormation}
-                onChange={(e) => setPredictedAwayFormation(e.target.value)}
-                className="h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm text-white outline-none"
-                disabled={isLocked}
-              >
-                {FORMATIONS.map((item) => (
-                  <option key={item} value={item} className="text-black">
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
+            </section>
+          </div>
+
+          <div className="space-y-4">
+            {activeTab === "overview" ? (
+              <>
+                <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 text-slate-900 shadow-sm dark:border-white/10 dark:bg-white/[0.05] dark:text-white sm:p-5">
+                  <div className="text-lg font-semibold text-[var(--text)]">Рахунок</div>
+                  <div className="mt-1 text-sm text-[var(--text)]">
+                    Визначи основний рахунок матчу
+                  </div>
+
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--background)] p-4 dark:border-white/10 dark:bg-white/[0.03]">
+                      <div className="text-sm font-semibold text-[var(--text)]">{match.homeTeam.name}</div>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <button
+                          type="button"
+                          disabled={isLocked || predictedHome <= 0}
+                          onClick={() => setPredictedHome(Math.max(0, predictedHome - 1))}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--background)] text-lg text-[var(--text)]"
+                        >
+                          -
+                        </button>
+                        <div className="text-3xl font-black text-[var(--text)]">{predictedHome}</div>
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          onClick={() => setPredictedHome(predictedHome + 1)}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--background)] text-lg text-[var(--text)]"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--background)] p-4">
+                      <div className="text-sm font-semibold text-[var(--text)]">{match.awayTeam.name}</div>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <button
+                          type="button"
+                          disabled={isLocked || predictedAway <= 0}
+                          onClick={() => setPredictedAway(Math.max(0, predictedAway - 1))}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] text-lg text-[var(--text)] pointer"
+                        >
+                          -
+                        </button>
+                        <div className="text-3xl font-black text-[var(--text)]">{predictedAway}</div>
+                        <button
+                          type="button"
+                          disabled={isLocked}
+                          onClick={() => setPredictedAway(predictedAway + 1)}
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--background)] text-lg text-[var(--text)]"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 text-[var(--text)] shadow-sm sm:p-5">
+                  <div className="text-lg font-semibold">Схеми команд</div>
+
+                  <div className="mt-4 grid gap-4">
+                    <div>
+                      <div className="mb-2 text-sm font-medium">{match.homeTeam.name}</div>
+                      <select
+                        value={predictedHomeFormation}
+                        onChange={(e) => setPredictedHomeFormation(e.target.value)}
+                        className="h-11 w-full rounded-2xl border border-[var(--border)] bg-[var(--background)] px-4 text-sm outline-none "
+                        disabled={isLocked}
+                      >
+                        {FORMATIONS.map((item) => (
+                          <option key={item} value={item} className="text-black">
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <div className="mb-2 text-sm font-medium">{match.awayTeam.name}</div>
+                      <select
+                        value={predictedAwayFormation}
+                        onChange={(e) => setPredictedAwayFormation(e.target.value)}
+                        className="h-11 w-full rounded-2xl border border-[var(--border)] bg-[var(--background)] px-4 text-sm outline-none "
+                        disabled={isLocked}
+                      >
+                        {FORMATIONS.map((item) => (
+                          <option key={item} value={item} className="text-black">
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="rounded-[28px] border border-[var(--border)] bg-[var(--background)] p-4 text-[var(--text)] shadow-sm sm:p-5">
+                  <div className="text-lg font-semibold">Нотатки</div>
+                  <div className="mt-1 text-sm text-[var(--text)]">
+                    Коротко, якщо хочеш
+                  </div>
+
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={5}
+                    className="mt-4 w-full rounded-2xl border border-[var(--border)] bg-[var(--background)] text-[var(--text)] px-4 py-3 text-sm outline-none "
+                    placeholder="Тут можна залишити свої думки по матчу"
+                    disabled={isLocked}
+                  />
+                </section>
+              </>
+            ) : null}
+
+            {activeTab === "lineup" ? (
+              <section className="rounded-[28px] border border-[var(--border)] bg-[var(--background)] p-4 text-[var(--text)] shadow-sm sm:p-5">
+                <div className="text-lg font-semibold">Склад активної команди</div>
+                <div className="mt-1 text-sm text-[var(--text)]">
+                  Працює саме через твоє поле: натискаєш на позицію на полі — відкривається вибір гравця.
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {buildHalfPitchSlots(activeFormation, activeTeamSide).map((slot) => {
+                    const row = getPlayerForSlot(lineupState, activeTeamSide, slot);
+                    const player = row
+                      ? activePlayers.find((item) => item.id === row.playerId)
+                      : null;
+
+                    return (
+                      <button
+                        key={slot.key}
+                        type="button"
+                        onClick={() => openSlot(activeTeamSide, slot)}
+                        className="flex w-full items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--background)] px-3 py-3 text-left transition hover:bg-[var(--bg-hover)] dark:border-white/10 dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
+                        disabled={isLocked}
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--background)] text-xs font-black dark:border-white/10 dark:bg-black/20">
+                            {slot.label}
+                          </div>
+
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold">
+                              {player ? player.name : "Порожня позиція"}
+                            </div>
+                            <div className="text-xs text-[var(--text)]">
+                              {player
+                                ? `${player.shirtNumber ? `#${player.shirtNumber} · ` : ""}${getPositionLabel(player.position)}`
+                                : "Натисни, щоб обрати гравця"}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-xs font-semibold text-[var(--text)]">
+                          {player ? "Змінити" : "Обрати"}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ) : null}
+
+            {activeTab === "events" ? (
+              <>
+                <section className="rounded-[28px] border border-[var(--border)] bg-[var(--background)] p-4 text-[var(--text)] shadow-sm dark:border-white/10 dark:bg-white/[0.05] dark:text-white sm:p-5">
+                  <div className="text-lg font-semibold">Голи активної команди</div>
+                  <div className="mt-1 text-sm text-[var(--text)]">
+                    Показуються тільки вже додані гравці або можна додати нового в межах ліміту голів.
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--background)] p-4 dark:border-white/10 dark:bg-white/[0.03]">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text)]">
+                      Розподіл
+                    </div>
+                    <div className="mt-2 flex items-end justify-between gap-3">
+                      <div>
+                        <div className="text-2xl font-black">
+                          {activeGoalsAssigned} / {activeGoalTarget}
+                        </div>
+                        <div className="text-sm text-slate-500 dark:text-white/45">
+                          Ще треба розподілити: {activeGoalsRemaining}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={openScorerPicker}
+                        disabled={isLocked || activeGoalsRemaining <= 0}
+                        className="rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-2.5 text-sm font-semibold text-[var(--text)] transition hover:bg-[var(--bg-hover)] disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.05] dark:text-white dark:hover:bg-white/[0.08]"
+                      >
+                        Додати автора
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    {activeSideScorers.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--background)] px-4 py-6 text-sm text-[var(--text)] dark:border-white/10 dark:bg-white/[0.03] dark:text-white/45">
+                        Поки немає авторів голів для {activeTeam.name}.
+                      </div>
+                    ) : (
+                      activeSideScorers.map((row) => {
+                        const player = activePlayers.find((item) => item.id === row.playerId);
+                        if (!player) return null;
+
+                        const sideTotal = countGoalsForSide(scorerState, activeTeamSide);
+
+                        return (
+                          <div
+                            key={row.id}
+                            className="rounded-2xl border border-[var(--border)] bg-[var(--background)] p-4"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-semibold">
+                                  {player.name}
+                                </div>
+                                <div className="text-xs text-[var(--text)]">
+                                  {player.shirtNumber ? `#${player.shirtNumber} · ` : ""}
+                                  {getPositionLabel(player.position)}
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => updateScorerGoals(player.id, activeTeamSide, 0)}
+                                disabled={isLocked}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--background)] text-[var(--text)] transition hover:bg-red-50 hover:text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.05] dark:text-white dark:hover:bg-red-500/20 dark:hover:text-red-200"
+                              >
+                                ×
+                              </button>
+                            </div>
+
+                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  disabled={isLocked || row.goalsCount <= 1}
+                                  onClick={() =>
+                                    updateScorerGoals(
+                                      player.id,
+                                      activeTeamSide,
+                                      row.goalsCount - 1
+                                    )
+                                  }
+                                  className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--background)] text-lg disabled:opacity-40"
+                                >
+                                  -
+                                </button>
+
+                                <div className="inline-flex min-w-[56px] items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--background)] px-4 py-2 text-lg font-black">
+                                  {row.goalsCount}
+                                </div>
+
+                                <button
+                                  type="button"
+                                  disabled={
+                                    isLocked ||
+                                    sideTotal - row.goalsCount + (row.goalsCount + 1) >
+                                      activeGoalTarget
+                                  }
+                                  onClick={() =>
+                                    updateScorerGoals(
+                                      player.id,
+                                      activeTeamSide,
+                                      row.goalsCount + 1
+                                    )
+                                  }
+                                  className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--background)] text-lg dark:border-white/10 dark:bg-black/20 disabled:opacity-40"
+                                >
+                                  +
+                                </button>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setFirstGoalScorer(player.id, activeTeamSide)}
+                                disabled={isLocked}
+                                className={[
+                                  "rounded-2xl border px-4 py-2 text-sm font-semibold transition",
+                                  row.isFirstGoalScorer
+                                    ? "border-[var(--border)] bg-[var(--background)] text-[var(--text)] "
+                                    : "border-[var(--border)] bg-[var(--background)] text-[var(--text)] hover:bg-slate-100 dark:border-white/10 dark:bg-black/20 dark:text-white/75 dark:hover:bg-white/[0.08]",
+                                ].join(" ")}
+                              >
+                                Перший гол
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </section>
+
+                <section className="rounded-[28px] border border-[var(--border)] bg-[var(--background)] p-4 text-[var(--text)] shadow-sm sm:p-5">
+                  <div className="text-lg font-semibold">MVP команди</div>
+                  <div className="mt-1 text-sm text-[var(--text)]">
+                    Показуємо тільки релевантних гравців активної сторони.
+                  </div>
+
+                  {activeMvpPlayer ? (
+                    <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--background)] p-4">
+                      <div className="text-sm font-semibold">{activeMvpPlayer.name}</div>
+                      <div className="mt-1 text-xs text-[var(--text)]">
+                        {activeMvpPlayer.shirtNumber
+                          ? `#${activeMvpPlayer.shirtNumber} · `
+                          : ""}
+                        {getPositionLabel(activeMvpPlayer.position)}
+                      </div>
+
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsMvpPickerOpen(true)}
+                          disabled={isLocked}
+                          className="rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-2.5 text-sm font-semibold text-[var(--text)] transition hover:bg-slate-100 dark:border-white/10 dark:bg-black/20 dark:text-white dark:hover:bg-white/[0.08]"
+                        >
+                          Змінити
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPredictedMvpPlayerId("")}
+                          disabled={isLocked}
+                          className="rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-2.5 text-sm font-semibold text-[var(--text)] transition hover:bg-red-50 hover:text-red-600 dark:border-white/10 dark:bg-black/20 dark:text-white/80 dark:hover:bg-red-500/20 dark:hover:text-red-200"
+                        >
+                          Прибрати
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsMvpPickerOpen(true)}
+                      disabled={isLocked}
+                      className="mt-4 w-full rounded-2xl border border-dashed border-[var(--border)] bg-[var(--background)] px-4 py-6 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Обрати MVP для {activeTeam.name}
+                    </button>
+                  )}
+                </section>
+              </>
+            ) : null}
           </div>
         </section>
-
-        <section>
-          <div className="xl:hidden">
-            <HalfPitchSvg
-              side={selectedTeamSide}
-              teamName={selectedTeam.name}
-              formation={selectedFormation}
-              players={selectedTeamPlayers}
-              lineup={lineup}
-              onOpenSlot={(slot) => openSlot(selectedTeamSide, slot)}
-              onRemoveFromSlot={(slot) =>
-                handleRemoveFromSlot(selectedTeamSide, slot)
-              }
-            />
-          </div>
-
-          <div className="hidden xl:grid xl:grid-cols-2 xl:gap-4">
-            <HalfPitchSvg
-              side="HOME"
-              teamName={match.homeTeam.name}
-              formation={predictedHomeFormation}
-              players={match.homeTeam.players}
-              lineup={lineup}
-              onOpenSlot={(slot) => openSlot("HOME", slot)}
-              onRemoveFromSlot={(slot) => handleRemoveFromSlot("HOME", slot)}
-            />
-
-            <HalfPitchSvg
-              side="AWAY"
-              teamName={match.awayTeam.name}
-              formation={predictedAwayFormation}
-              players={match.awayTeam.players}
-              lineup={lineup}
-              onOpenSlot={(slot) => openSlot("AWAY", slot)}
-              onRemoveFromSlot={(slot) => handleRemoveFromSlot("AWAY", slot)}
-            />
-          </div>
-        </section>
-
-        <section className="grid gap-4 xl:grid-cols-2">
-          <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 sm:p-5">
-            <div className="text-lg font-semibold text-white">MVP матчу</div>
-            <div className="mt-1 text-sm text-white/45">Необов’язково</div>
-
-            <select
-              value={predictedMvpPlayerId}
-              onChange={(e) => setPredictedMvpPlayerId(e.target.value)}
-              className="mt-4 h-11 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm text-white outline-none"
-              disabled={isLocked}
-            >
-              <option value="" className="text-black">
-                Не обрано
-              </option>
-              {mvpOptions.map((player: any) => (
-                <option key={player.id} value={player.id} className="text-black">
-                  {player.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 sm:p-5">
-            <div className="text-lg font-semibold text-white">Нотатки</div>
-            <div className="mt-1 text-sm text-white/45">Коротко, якщо хочеш</div>
-
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={5}
-              className="mt-4 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none"
-              placeholder="Тут можна залишити свої думки по матчу"
-              disabled={isLocked}
-            />
-          </div>
-        </section>
-
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={isLocked || isSubmitting}
-            className="rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {isSubmitting ? "Зберігаю..." : "Зберегти прогноз"}
-          </button>
-        </div>
       </Form>
 
       <PlayerPickerModal
         open={Boolean(activeSlot)}
         title={
           activeSlot
-            ? `${
-                activeSlot.side === "HOME"
-                  ? match.homeTeam.name
-                  : match.awayTeam.name
-              } · ${activeSlot.slot.label}`
+            ? `${getTeamBySide(match, activeSlot.side).name} · ${activeSlot.slot.label}`
             : ""
         }
         subtitle="Показуються тільки релевантні гравці для цієї позиції"
@@ -2100,21 +2274,22 @@ export default function PredictAdvancedPage() {
       />
 
       <PlayerPickerModal
-        open={Boolean(activeScorer)}
-        title={
-          activeScorer
-            ? `${
-                activeScorer.side === "HOME"
-                  ? match.homeTeam.name
-                  : match.awayTeam.name
-              } · Автор голу`
-            : ""
-        }
-        subtitle="Обери гравця цієї команди"
+        open={isScorerPickerOpen}
+        title={`${activeTeam.name} · Автор голу`}
+        subtitle="Показуються тільки гравці активної команди, які вже в складі або вже були додані в голи"
         players={currentScorerPlayers}
-        currentPlayerId={currentScorerPlayerId}
         onClose={closeScorerPicker}
         onPick={handlePickScorer}
+      />
+
+      <PlayerPickerModal
+        open={isMvpPickerOpen}
+        title={`${activeTeam.name} · MVP`}
+        subtitle="Обери MVP серед стартового складу активної команди"
+        players={currentMvpPlayers}
+        currentPlayerId={predictedMvpPlayerId || null}
+        onClose={() => setIsMvpPickerOpen(false)}
+        onPick={toggleMvp}
       />
     </div>
   );

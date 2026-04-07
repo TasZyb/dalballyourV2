@@ -66,7 +66,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         startTime: "desc",
       },
     },
-    take: 100,
   });
 
   const matches = gameMatches.map((item) => item.match);
@@ -99,6 +98,13 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
     );
 
+  const postponedMatches = matches
+    .filter((match) => match.status === "POSTPONED")
+    .sort(
+      (a, b) =>
+        new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    );
+
   return data({
     currentUser,
     gameId,
@@ -106,11 +112,13 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     liveMatches,
     finishedMatches,
     canceledMatches,
+    postponedMatches,
     counts: {
       upcoming: upcomingMatches.length,
       live: liveMatches.length,
       finished: finishedMatches.length,
       canceled: canceledMatches.length,
+      postponed: postponedMatches.length,
       total: matches.length,
     },
   });
@@ -120,7 +128,6 @@ function formatMatchDate(date: Date | string) {
   return new Intl.DateTimeFormat("uk-UA", {
     day: "2-digit",
     month: "2-digit",
-    year: "numeric",
   }).format(new Date(date));
 }
 
@@ -138,30 +145,28 @@ function getStatusLabel(status: string) {
     case "LIVE":
       return "LIVE";
     case "FINISHED":
-      return "Завершено";
+      return "Готово";
     case "CANCELED":
-      return "Скасовано";
+      return "Стоп";
     case "POSTPONED":
-      return "Перенесено";
+      return "Пауза";
     default:
       return status;
   }
 }
 
-function getStatusClasses(status: string) {
+function getStatusDotClass(status: string) {
   switch (status) {
     case "LIVE":
-      return "bg-red-500/15 text-red-300 border-red-500/20";
+      return "bg-red-400";
     case "FINISHED":
-      return "bg-emerald-500/15 text-emerald-300 border-emerald-500/20";
-    case "SCHEDULED":
-      return "bg-white/8 text-white/70 border-white/10";
-    case "CANCELED":
-      return "bg-zinc-500/15 text-zinc-300 border-zinc-500/20";
+      return "bg-emerald-400";
     case "POSTPONED":
-      return "bg-amber-500/15 text-amber-300 border-amber-500/20";
+      return "bg-amber-400";
+    case "CANCELED":
+      return "bg-zinc-400";
     default:
-      return "bg-white/8 text-white/70 border-white/10";
+      return "bg-white/40";
   }
 }
 
@@ -179,6 +184,53 @@ function getTournamentLogoSrc(tournament?: TournamentLike | null) {
 
 function getTournamentSubLabel(match: MatchItem) {
   return match.round?.name || match.stageLabel || match.matchdayLabel || null;
+}
+
+function StatPill({
+  icon,
+  value,
+  tone = "default",
+}: {
+  icon: React.ReactNode;
+  value: number;
+  tone?: "default" | "live" | "done" | "warn" | "muted";
+}) {
+  const tones = {
+    default: "border-white/10 bg-white/5 text-white/80",
+    live: "border-red-500/20 bg-red-500/10 text-red-200",
+    done: "border-emerald-500/20 bg-emerald-500/10 text-emerald-200",
+    warn: "border-amber-500/20 bg-amber-500/10 text-amber-200",
+    muted: "border-zinc-500/20 bg-zinc-500/10 text-zinc-300",
+  };
+
+  return (
+    <div
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold ${tones[tone]}`}
+    >
+      <span className="flex h-5 w-5 items-center justify-center">{icon}</span>
+      <span>{value}</span>
+    </div>
+  );
+}
+
+function NavIconLink({
+  href,
+  label,
+  icon,
+}: {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/75 transition hover:bg-white/10 hover:text-white"
+    >
+      <span className="flex h-4 w-4 items-center justify-center">{icon}</span>
+      <span className="hidden sm:inline">{label}</span>
+    </a>
+  );
 }
 
 function TeamCell({
@@ -201,13 +253,10 @@ function TeamCell({
           <div className="truncate text-[13px] font-semibold text-white sm:text-sm">
             {team.shortName || team.name}
           </div>
-          <div className="hidden truncate text-[10px] text-white/45 sm:block sm:text-[11px]">
-            {team.tla || team.name}
-          </div>
         </div>
       )}
 
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 sm:h-9 sm:w-9">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 sm:h-10 sm:w-10">
         {logoSrc ? (
           <img
             src={logoSrc}
@@ -226,9 +275,6 @@ function TeamCell({
         <div className="min-w-0">
           <div className="truncate text-[13px] font-semibold text-white sm:text-sm">
             {team.shortName || team.name}
-          </div>
-          <div className="hidden truncate text-[10px] text-white/45 sm:block sm:text-[11px]">
-            {team.tla || team.name}
           </div>
         </div>
       )}
@@ -250,7 +296,7 @@ function TournamentBadge({
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
       {tournament && (
-        <div className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5">
+        <div className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2 py-1">
           <div className="flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/90">
             {logoSrc ? (
               <img
@@ -266,14 +312,14 @@ function TournamentBadge({
             )}
           </div>
 
-          <span className="max-w-[140px] truncate text-[11px] text-white/75 sm:max-w-none">
+          <span className="max-w-[120px] truncate text-[11px] text-white/70 sm:max-w-none">
             {tournament.name}
           </span>
         </div>
       )}
 
       {label ? (
-        <div className="inline-flex items-center rounded-full border border-white/8 bg-white/[0.03] px-2 py-0.5 text-[11px] text-white/55">
+        <div className="inline-flex items-center rounded-full border border-white/8 bg-white/[0.03] px-2 py-1 text-[11px] text-white/50">
           {label}
         </div>
       ) : null}
@@ -295,38 +341,41 @@ function MatchRow({
   return (
     <Link
       to={`/games/${gameId}/matches/${match.id}`}
-      className="block rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 transition hover:border-white/15 hover:bg-white/[0.05] sm:px-3.5 sm:py-3"
+      className="block rounded-3xl border border-white/8 bg-white/[0.04] px-3 py-3 transition hover:border-white/15 hover:bg-white/[0.07]"
     >
-      <div className="flex min-w-0 flex-col gap-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <TournamentBadge
-            tournament={match.tournament}
-            label={tournamentSubLabel}
-          />
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/45">
+          <div className="min-w-0">
+            <TournamentBadge
+              tournament={match.tournament}
+              label={tournamentSubLabel}
+            />
+          </div>
 
-          <div className="flex shrink-0 items-center gap-2 text-[11px] text-white/40 sm:text-xs">
+          <div className="flex shrink-0 items-center gap-2">
             <span>{formatMatchDate(match.startTime)}</span>
             <span className="text-white/20">•</span>
             <span>{formatMatchTime(match.startTime)}</span>
           </div>
         </div>
 
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
           <TeamCell team={match.homeTeam} align="left" />
 
-          <div className="flex min-w-[70px] flex-col items-center justify-center sm:min-w-[78px]">
-            <div className="text-base font-black tracking-tight text-white sm:text-lg">
+          <div className="flex min-w-[68px] flex-col items-center justify-center">
+            <div className="text-lg font-black tracking-tight text-white sm:text-xl">
               {isFinished || isLive
-                ? `${match.homeScore ?? 0} : ${match.awayScore ?? 0}`
+                ? `${match.homeScore ?? 0}:${match.awayScore ?? 0}`
                 : "vs"}
             </div>
 
-            <div
-              className={`mt-0.5 inline-flex rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] ${getStatusClasses(
-                match.status
-              )}`}
-            >
-              {getStatusLabel(match.status)}
+            <div className="mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-white/55">
+              <span
+                className={`h-2 w-2 rounded-full ${getStatusDotClass(
+                  match.status
+                )}`}
+              />
+              <span>{getStatusLabel(match.status)}</span>
             </div>
           </div>
 
@@ -353,16 +402,16 @@ function MatchesGroup({
   gameId: string;
 }) {
   return (
-    <section id={id} className="space-y-3 scroll-mt-24">
+    <section id={id} className="space-y-2.5 scroll-mt-24">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-lg font-bold text-white sm:text-xl">{title}</h2>
-        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/55">
+        <h2 className="text-base font-bold text-white sm:text-lg">{title}</h2>
+        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/55">
           {count}
         </span>
       </div>
 
       {matches.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-sm text-white/45">
+        <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-5 text-sm text-white/40">
           {emptyText}
         </div>
       ) : (
@@ -383,138 +432,225 @@ export default function MatchesPage() {
     liveMatches,
     finishedMatches,
     canceledMatches,
+    postponedMatches,
     counts,
   } = useLoaderData<typeof loader>();
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
+    <div className="mx-auto max-w-5xl space-y-6">
       <section className="space-y-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/40">
-              Matches
-            </p>
-            <h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">
-              Усі матчі гри
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-black tracking-tight text-white">
+              Матчі
             </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">
-              Простий список усіх матчів цієї гри: найближчі, live, завершені та
-              скасовані.
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/45">
+              <span>{counts.total} всього</span>
+              <span className="text-white/20">•</span>
+              <span>{counts.live} live</span>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <a
+            <NavIconLink
               href="#upcoming"
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/75 transition hover:bg-white/10 hover:text-white"
-            >
-              Скоро
-            </a>
-            <a
+              label="Скоро"
+              icon={
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4 fill-none stroke-current stroke-2"
+                >
+                  <circle cx="12" cy="12" r="8" />
+                  <path d="M12 8v5l3 2" />
+                </svg>
+              }
+            />
+
+            <NavIconLink
               href="#live"
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/75 transition hover:bg-white/10 hover:text-white"
-            >
-              LIVE
-            </a>
-            <a
+              label="Live"
+              icon={
+                <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current">
+                  <circle cx="12" cy="12" r="5" />
+                </svg>
+              }
+            />
+
+            <NavIconLink
               href="#finished"
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/75 transition hover:bg-white/10 hover:text-white"
-            >
-              Завершені
-            </a>
+              label="Готово"
+              icon={
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4 fill-none stroke-current stroke-2"
+                >
+                  <path d="M5 12l4 4L19 6" />
+                </svg>
+              }
+            />
+
+            {counts.postponed > 0 && (
+              <NavIconLink
+                href="#postponed"
+                label="Пауза"
+                icon={
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4 fill-none stroke-current stroke-2"
+                  >
+                    <circle cx="12" cy="12" r="8" />
+                    <path d="M12 8v5l3 2" />
+                  </svg>
+                }
+              />
+            )}
+
             {counts.canceled > 0 && (
-              <a
+              <NavIconLink
                 href="#canceled"
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/75 transition hover:bg-white/10 hover:text-white"
-              >
-                Скасовані
-              </a>
+                label="Стоп"
+                icon={
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4 fill-none stroke-current stroke-2"
+                  >
+                    <path d="M6 6l12 12M18 6L6 18" />
+                  </svg>
+                }
+              />
             )}
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-white/35">
-              Усього
-            </div>
-            <div className="mt-2 text-2xl font-black text-white">
-              {counts.total}
-            </div>
-          </div>
+        <div className="flex flex-wrap gap-2">
+          <StatPill
+            value={counts.total}
+            icon={
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4 fill-none stroke-current stroke-2"
+              >
+                <circle cx="12" cy="12" r="8" />
+                <path d="M9 9l3-2 3 2v3l-3 2-3-2z" />
+              </svg>
+            }
+          />
 
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-white/35">
-              Скоро
-            </div>
-            <div className="mt-2 text-2xl font-black text-white">
-              {counts.upcoming}
-            </div>
-          </div>
+          <StatPill
+            value={counts.upcoming}
+            tone="default"
+            icon={
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4 fill-none stroke-current stroke-2"
+              >
+                <circle cx="12" cy="12" r="8" />
+                <path d="M12 8v5l3 2" />
+              </svg>
+            }
+          />
 
-          <div className="rounded-2xl border border-red-500/10 bg-red-500/[0.06] p-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-red-200/60">
-              LIVE
-            </div>
-            <div className="mt-2 text-2xl font-black text-red-200">
-              {counts.live}
-            </div>
-          </div>
+          <StatPill
+            value={counts.live}
+            tone="live"
+            icon={
+              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current">
+                <circle cx="12" cy="12" r="6" />
+              </svg>
+            }
+          />
 
-          <div className="rounded-2xl border border-emerald-500/10 bg-emerald-500/[0.06] p-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-emerald-200/60">
-              Завершені
-            </div>
-            <div className="mt-2 text-2xl font-black text-emerald-200">
-              {counts.finished}
-            </div>
-          </div>
+          <StatPill
+            value={counts.finished}
+            tone="done"
+            icon={
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4 fill-none stroke-current stroke-2"
+              >
+                <path d="M5 12l4 4L19 6" />
+              </svg>
+            }
+          />
 
-          <div className="rounded-2xl border border-zinc-500/10 bg-zinc-500/[0.06] p-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-zinc-200/60">
-              Скасовані
-            </div>
-            <div className="mt-2 text-2xl font-black text-zinc-200">
-              {counts.canceled}
-            </div>
-          </div>
+          {counts.postponed > 0 && (
+            <StatPill
+              value={counts.postponed}
+              tone="warn"
+              icon={
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4 fill-none stroke-current stroke-2"
+                >
+                  <path d="M12 7v5l3 2" />
+                  <circle cx="12" cy="12" r="8" />
+                </svg>
+              }
+            />
+          )}
+
+          {counts.canceled > 0 && (
+            <StatPill
+              value={counts.canceled}
+              tone="muted"
+              icon={
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4 fill-none stroke-current stroke-2"
+                >
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              }
+            />
+          )}
         </div>
       </section>
 
       <MatchesGroup
         id="upcoming"
-        title="Найближчі матчі"
+        title="Скоро"
         count={counts.upcoming}
         matches={upcomingMatches}
-        emptyText="Майбутніх матчів зараз немає."
+        emptyText="Порожньо"
         gameId={gameId}
       />
 
       <MatchesGroup
         id="live"
-        title="LIVE матчі"
+        title="LIVE"
         count={counts.live}
         matches={liveMatches}
-        emptyText="LIVE матчів зараз немає."
+        emptyText="Зараз немає"
         gameId={gameId}
       />
 
       <MatchesGroup
         id="finished"
-        title="Завершені матчі"
+        title="Готово"
         count={counts.finished}
         matches={finishedMatches}
-        emptyText="Завершених матчів поки що немає."
+        emptyText="Поки немає"
         gameId={gameId}
       />
+
+      {counts.postponed > 0 && (
+        <MatchesGroup
+          id="postponed"
+          title="Пауза"
+          count={counts.postponed}
+          matches={postponedMatches}
+          emptyText="Немає"
+          gameId={gameId}
+        />
+      )}
 
       {counts.canceled > 0 && (
         <MatchesGroup
           id="canceled"
-          title="Скасовані матчі"
+          title="Стоп"
           count={counts.canceled}
           matches={canceledMatches}
-          emptyText="Скасованих матчів немає."
+          emptyText="Немає"
           gameId={gameId}
         />
       )}

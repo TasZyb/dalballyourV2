@@ -102,6 +102,7 @@ model Team {
   players       Player[]
   formSnapshots TeamFormSnapshot[]
   lineups       MatchLineup[]
+  games         Game[]
 
   @@unique([name])
   @@index([shortName])
@@ -413,7 +414,16 @@ model Game {
   bannerUrl String?
   avatarUrl String?
 
-  ownerId            String
+  ownerId String
+
+  // NEW
+  mode GameMode @default(GROUP)
+
+  // Career Mode
+  favoriteTeamId String?
+  favoriteTeam   Team?   @relation(fields: [favoriteTeamId], references: [id])
+
+  // Tournament link (optional)
   linkedTournamentId String?
 
   inviteCode String         @unique
@@ -425,6 +435,7 @@ model Game {
 
   timezone String?
 
+  // Scoring system
   scoringExact   Int @default(3)
   scoringOutcome Int @default(1)
   scoringWrong   Int @default(0)
@@ -432,11 +443,17 @@ model Game {
   defaultRoundWeight     Int @default(1)
   lockMinutesBeforeStart Int @default(0)
 
+  // Coins rewards
   participationRewardCoins  Int @default(0)
   exactScoreRewardCoins     Int @default(0)
   correctOutcomeRewardCoins Int @default(0)
   roundWinRewardCoins       Int @default(0)
   gameWinRewardCoins        Int @default(0)
+
+  // Career stats (optional future)
+  totalPredictions   Int @default(0)
+  correctPredictions Int @default(0)
+  exactPredictions   Int @default(0)
 
   startsAt   DateTime?
   endsAt     DateTime?
@@ -456,7 +473,9 @@ model Game {
 
   @@index([ownerId])
   @@index([linkedTournamentId])
+  @@index([favoriteTeamId])
   @@index([visibility, status])
+  @@index([mode])
 }
 
 model GameMember {
@@ -737,4 +756,9 @@ enum LineupRole {
   STARTER
   BENCH
   ABSENT
+}
+
+enum GameMode {
+  GROUP
+  CAREER
 }

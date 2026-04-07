@@ -3,6 +3,7 @@ import {
   Link,
   redirect,
   useLoaderData,
+  useActionData,
   data,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
@@ -27,20 +28,18 @@ function getStatusLabel(status: string) {
   }
 }
 
-function getStatusClasses(status: string) {
+function getStatusDotClass(status: string) {
   switch (status) {
     case "LIVE":
-      return "border-red-500/30 bg-red-500/12 text-red-200";
+      return "bg-red-400";
     case "FINISHED":
-      return "border-emerald-500/30 bg-emerald-500/12 text-emerald-200";
-    case "SCHEDULED":
-      return "border-white/10 bg-white/6 text-white/70";
-    case "CANCELED":
-      return "border-zinc-500/30 bg-zinc-500/12 text-zinc-300";
+      return "bg-emerald-400";
     case "POSTPONED":
-      return "border-amber-500/30 bg-amber-500/12 text-amber-200";
+      return "bg-amber-400";
+    case "CANCELED":
+      return "bg-zinc-400";
     default:
-      return "border-white/10 bg-white/6 text-white/70";
+      return "bg-white/40";
   }
 }
 
@@ -181,12 +180,18 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     };
   });
 
-  const openFirstMatch =
-    compactMatches.find((item) => !item.isLocked)?.match.id ??
-    compactMatches[0]?.match.id ??
-    null;
+  const pickerMatches = compactMatches.filter(
+    (item) =>
+      item.match.status !== "FINISHED" &&
+      item.match.status !== "CANCELED" &&
+      item.match.status !== "POSTPONED"
+  );
 
-  const selectedMatchId = selectedMatchIdFromUrl ?? openFirstMatch;
+  const selectedMatchId =
+    selectedMatchIdFromUrl &&
+    pickerMatches.some((item) => item.match.id === selectedMatchIdFromUrl)
+      ? selectedMatchIdFromUrl
+      : null;
 
   let selectedMatchBlock: any = null;
   let participantPredictions: any[] = [];
@@ -286,6 +291,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     currentUser,
     game,
     compactMatches,
+    pickerMatches,
     selectedMatchBlock,
     participantPredictions,
   });
@@ -441,6 +447,13 @@ function formatMatchDate(date: Date | string) {
   return new Intl.DateTimeFormat("uk-UA", {
     day: "2-digit",
     month: "2-digit",
+  }).format(new Date(date));
+}
+
+function formatMatchDateFull(date: Date | string) {
+  return new Intl.DateTimeFormat("uk-UA", {
+    day: "2-digit",
+    month: "2-digit",
     year: "numeric",
   }).format(new Date(date));
 }
@@ -479,21 +492,21 @@ function TeamLogo({
 
   const sizeClass =
     size === "sm"
-      ? "h-8 w-8"
+      ? "h-10 w-10"
       : size === "lg"
-      ? "h-20 w-20 sm:h-24 sm:w-24"
+      ? "h-16 w-16 sm:h-20 sm:w-20"
       : "h-12 w-12 sm:h-14 sm:w-14";
 
   const imgClass =
     size === "sm"
-      ? "h-5 w-5"
+      ? "h-6 w-6"
       : size === "lg"
-      ? "h-12 w-12 sm:h-14 sm:w-14"
+      ? "h-10 w-10 sm:h-12 sm:w-12"
       : "h-7 w-7 sm:h-8 sm:w-8";
 
   return (
     <div
-      className={`flex ${sizeClass} shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.06]`}
+      className={`flex ${sizeClass} shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/[0.07]`}
     >
       {logoSrc ? (
         <img
@@ -511,49 +524,76 @@ function TeamLogo({
   );
 }
 
-function TournamentPill({
-  tournament,
-  label,
-}: {
-  tournament?: any;
-  label?: string | null;
-}) {
-  if (!tournament && !label) return null;
-
-  const logoSrc = getTournamentLogoSrc(tournament);
-
+function TinyIconClock() {
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {tournament ? (
-        <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-xs text-white/70">
-          <div className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-white/85">
-            {logoSrc ? (
-              <img
-                src={logoSrc}
-                alt={tournament.name}
-                className="h-3.5 w-3.5 object-contain"
-                loading="lazy"
-              />
-            ) : (
-              <span className="text-[8px] font-bold text-black/70">
-                {tournament.name.slice(0, 2).toUpperCase()}
-              </span>
-            )}
-          </div>
-          <span className="max-w-[180px] truncate">{tournament.name}</span>
-        </div>
-      ) : null}
-
-      {label ? (
-        <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/55">
-          {label}
-        </div>
-      ) : null}
-    </div>
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current stroke-2"
+    >
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v5l3 2" />
+    </svg>
   );
 }
 
-function MatchCarouselCard({
+function TinyIconLive() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current">
+      <circle cx="12" cy="12" r="5" />
+    </svg>
+  );
+}
+
+function TinyIconUsers() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current stroke-2"
+    >
+      <path d="M16 19v-1a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v1" />
+      <circle cx="10" cy="7" r="3" />
+      <path d="M20 19v-1a4 4 0 0 0-3-3.87" />
+      <path d="M16 4.13a3 3 0 0 1 0 5.74" />
+    </svg>
+  );
+}
+
+function TinyIconArrow() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current stroke-2"
+    >
+      <path d="M5 12h14" />
+      <path d="M13 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+function TinyIconBall() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current stroke-2"
+    >
+      <circle cx="12" cy="12" r="8" />
+      <path d="M9 9l3-2 3 2v3l-3 2-3-2z" />
+    </svg>
+  );
+}
+
+function TinyIconSpark() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-4 w-4 fill-none stroke-current stroke-2"
+    >
+      <path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8L12 3z" />
+    </svg>
+  );
+}
+
+function MatchPickerCard({
   item,
   isActive,
 }: {
@@ -561,75 +601,117 @@ function MatchCarouselCard({
   isActive: boolean;
 }) {
   const match = item.match;
-  const leagueName = match.tournament?.name || "Ліга";
+  const label = getTournamentSubLabel(match);
+  const isLockedCard = item.isLocked;
+  const leagueLogo = getTournamentLogoSrc(match.tournament);
 
   return (
     <Link
-      to={`/games/${item.match.id ? "" : ""}`}
-      onClick={(e) => {
-        e.preventDefault();
-        window.location.href = `?matchId=${match.id}`;
-      }}
-      className={`block min-w-[185px] snap-start rounded-2xl border px-3 py-3 transition sm:min-w-[210px] ${
+      to={`?matchId=${match.id}`}
+      className={`group relative block min-w-[235px] overflow-hidden rounded-[28px] border p-3 transition ${
         isActive
-          ? "border-white/20 bg-white/[0.10] shadow-[0_10px_30px_rgba(0,0,0,0.18)]"
-          : "border-white/8 bg-white/[0.04] hover:border-white/15 hover:bg-white/[0.07]"
+          ? "border-white/20 bg-white/[0.11] shadow-[0_18px_40px_rgba(0,0,0,0.18)]"
+          : "border-white/8 bg-white/[0.05] hover:-translate-y-[1px] hover:border-white/15 hover:bg-white/[0.08]"
       }`}
     >
-      <div className="space-y-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-white/45">
-            {leagueName}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.10),transparent_55%)]" />
+
+      <div className="relative space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/50">
+              <div className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-white/85">
+                {leagueLogo ? (
+                  <img
+                    src={leagueLogo}
+                    alt={match.tournament?.name || "Tournament"}
+                    className="h-3.5 w-3.5 object-contain"
+                    loading="lazy"
+                  />
+                ) : (
+                  <TinyIconBall />
+                )}
+              </div>
+              <span className="truncate">
+                {match.tournament?.name || "Матч"}
+              </span>
+            </div>
           </div>
 
-          {match.myPrediction ? (
-            <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-emerald-200">
-              Є
-            </span>
-          ) : null}
+          <div className="flex flex-col items-end gap-1">
+            {match.status === "LIVE" ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-red-400/20 bg-red-500/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-red-200">
+                <TinyIconLive />
+                Live
+              </span>
+            ) : null}
+
+            {match.myPrediction ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-200">
+                <TinyIconSpark />
+                Мій
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-          <div className="flex min-w-0 flex-col items-center gap-1 text-center">
+          <div className="flex min-w-0 flex-col items-center gap-1.5 text-center">
             <TeamLogo team={match.homeTeam} size="sm" />
-            <div className="truncate text-[11px] font-bold text-white">
+            <div className="truncate text-[11px] font-black text-white">
               {match.homeTeam.shortName || match.homeTeam.name}
             </div>
           </div>
 
-          <div className="min-w-[48px] text-center">
-            <div className="text-sm font-black tracking-tight text-white">
+          <div className="min-w-[64px] text-center">
+            <div className="text-base font-black tracking-tight text-white">
               {match.myPrediction
                 ? `${match.myPrediction.predictedHome}:${match.myPrediction.predictedAway}`
                 : "VS"}
             </div>
+
+            <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-white/35">
+              {isLockedCard ? "Закрито" : "Open"}
+            </div>
           </div>
 
-          <div className="flex min-w-0 flex-col items-center gap-1 text-center">
+          <div className="flex min-w-0 flex-col items-center gap-1.5 text-center">
             <TeamLogo team={match.awayTeam} size="sm" />
-            <div className="truncate text-[11px] font-bold text-white">
+            <div className="truncate text-[11px] font-black text-white">
               {match.awayTeam.shortName || match.awayTeam.name}
             </div>
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/45">
+          <span>{formatMatchDate(match.startTime)}</span>
+          <span className="text-white/20">•</span>
+          <span>{formatMatchTime(match.startTime)}</span>
+          {label ? (
+            <>
+              <span className="text-white/20">•</span>
+              <span className="truncate">{label}</span>
+            </>
+          ) : null}
         </div>
       </div>
     </Link>
   );
 }
 
-function ScoreStepperInput({
-  label,
+function QuickScoreInput({
   name,
+  teamName,
   defaultValue,
 }: {
-  label: string;
   name: string;
+  teamName: string;
   defaultValue?: number | string;
 }) {
   return (
-    <div className="space-y-3">
-      <div className="text-center text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
-        {label}
+    <div className="space-y-2">
+      <div className="text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-white/45">
+        {teamName}
       </div>
 
       <input
@@ -638,13 +720,13 @@ function ScoreStepperInput({
         name={name}
         defaultValue={defaultValue}
         placeholder="0"
-        className="h-20 w-full rounded-[28px] border border-white/10 bg-white/[0.05] px-4 text-center text-4xl font-black tracking-tight text-white outline-none transition placeholder:text-white/20 focus:border-white/20 focus:bg-white/[0.08] sm:h-24 sm:text-5xl"
+        className="h-16 w-full rounded-[24px] border border-white/10 bg-white/[0.05] px-4 text-center text-3xl font-black tracking-tight text-white outline-none transition placeholder:text-white/20 focus:border-white/20 focus:bg-white/[0.08] sm:h-20 sm:text-4xl"
       />
     </div>
   );
 }
 
-function ParticipantPredictionRow({ item }: { item: any }) {
+function PredictionPersonRow({ item }: { item: any }) {
   return (
     <div
       className={`flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 ${
@@ -654,24 +736,20 @@ function ParticipantPredictionRow({ item }: { item: any }) {
       }`}
     >
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
           <div className="truncate text-sm font-semibold text-white">
             {item.name}
           </div>
 
           {item.isMe ? (
             <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-200">
-              Це ти
+              Ти
             </span>
           ) : null}
         </div>
 
         <div className="mt-1 text-xs text-white/40">
-          {item.prediction
-            ? `Подано ${new Date(item.prediction.submittedAt).toLocaleString(
-                "uk-UA"
-              )}`
-            : "Ще без прогнозу"}
+          {item.prediction ? "Подано прогноз" : "Ще без прогнозу"}
         </div>
       </div>
 
@@ -691,350 +769,311 @@ function ParticipantPredictionRow({ item }: { item: any }) {
 }
 
 export default function PredictPage() {
-  const { game, compactMatches, selectedMatchBlock, participantPredictions } =
+  const { game, pickerMatches, selectedMatchBlock, participantPredictions } =
     useLoaderData<typeof loader>();
 
+  const actionData = useActionData<typeof action>();
+
   const selected = selectedMatchBlock;
-  const selectedMatch = selected?.match;
-  const selectedMatchId = selectedMatch?.id ?? null;
+  const selectedMatch = selected?.match ?? null;
   const myPrediction = selectedMatch?.myPrediction ?? null;
   const tournamentSubLabel = selectedMatch
     ? getTournamentSubLabel(selectedMatch)
     : null;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8 px-1 sm:px-0">
+    <div className="mx-auto max-w-5xl space-y-6 px-1 sm:px-0">
       <section className="space-y-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/40">
-              Match predict
-            </p>
-            <h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-4xl">
-              Прогнози на матчі
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
+              <TinyIconBall />
+              Predict
+            </div>
+
+            <h1 className="mt-3 text-2xl font-black tracking-tight text-white sm:text-3xl">
+              Прогнози
             </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/55">
-              Обери матч, введи рахунок і за бажанням переходь до розширеного
-              прогнозу для гри{" "}
-              <span className="font-semibold text-white">{game.name}</span>.
-            </p>
+
+            <div className="mt-2 text-sm text-white/45">
+              Обери матч і постав рахунок
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <Link
               to="../matches"
-              className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/[0.08] hover:text-white"
+              className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/[0.08] hover:text-white"
             >
-              Усі матчі
+              <TinyIconBall />
+              Матчі
             </Link>
+
             <Link
               to="../leaderboard"
-              className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/[0.08] hover:text-white"
+              className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/[0.08] hover:text-white"
             >
+              <TinyIconUsers />
               Таблиця
             </Link>
           </div>
         </div>
       </section>
 
-      <section className="space-y-4">
+      <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-white sm:text-xl">Матчі</h2>
-            <p className="text-sm text-white/45">
-              На телефоні — свайп, на десктопі — сітка
-            </p>
+          <div className="flex items-center gap-2 text-white">
+            <TinyIconClock />
+            <h2 className="text-base font-bold sm:text-lg">Вибір матчу</h2>
           </div>
 
-          <div className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs text-white/55">
-            {compactMatches.length}
+          <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/55">
+            {pickerMatches.length}
           </div>
         </div>
 
-        {compactMatches.length > 0 ? (
-          <>
-            <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-2 md:hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {compactMatches.map((item) => (
-                <Link
-                  key={item.gameMatchId}
-                  to={`?matchId=${item.match.id}`}
-                  className="contents"
-                >
-                  <MatchCarouselCard
-                    item={item}
-                    isActive={selectedMatchId === item.match.id}
-                  />
-                </Link>
-              ))}
-            </div>
-
-            <div className="hidden grid-cols-3 gap-2 md:grid xl:grid-cols-4">
-              {compactMatches.map((item) => (
-                <Link
-                  key={item.gameMatchId}
-                  to={`?matchId=${item.match.id}`}
-                  className="contents"
-                >
-                  <MatchCarouselCard
-                    item={item}
-                    isActive={selectedMatchId === item.match.id}
-                  />
-                </Link>
-              ))}
-            </div>
-          </>
+        {pickerMatches.length > 0 ? (
+          <div className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {pickerMatches.map((item) => (
+              <MatchPickerCard
+                key={item.gameMatchId}
+                item={item}
+                isActive={selectedMatch?.id === item.match.id}
+              />
+            ))}
+          </div>
         ) : (
           <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-5 py-8 text-sm text-white/45">
-            У цій грі поки немає матчів.
+            Немає матчів для прогнозу
           </div>
         )}
       </section>
 
-      {selectedMatch ? (
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="space-y-6">
-            <section className="overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.05] shadow-[0_30px_80px_rgba(0,0,0,0.18)]">
-              <div className="relative overflow-hidden px-4 py-5 sm:px-6 sm:py-6">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.10),transparent_50%)]" />
-
-                <div className="relative space-y-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <TournamentPill
-                      tournament={selectedMatch.tournament}
-                      label={tournamentSubLabel}
-                    />
-
-                    <div
-                      className={`inline-flex rounded-full border px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] ${getStatusClasses(
-                        selectedMatch.status
-                      )}`}
-                    >
-                      {getStatusLabel(selectedMatch.status)}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
-                    <div className="flex min-w-0 flex-col items-center gap-3 text-center">
-                      <TeamLogo team={selectedMatch.homeTeam} size="lg" />
-                      <div>
-                        <div className="text-base font-black text-white sm:text-2xl">
-                          {selectedMatch.homeTeam.shortName ||
-                            selectedMatch.homeTeam.name}
-                        </div>
-                        <div className="mt-1 text-xs text-white/45 sm:text-sm">
-                          Господарі
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex min-w-[90px] flex-col items-center">
-                      <div className="text-3xl font-black tracking-tight text-white sm:text-5xl">
-                        {myPrediction
-                          ? `${myPrediction.predictedHome}:${myPrediction.predictedAway}`
-                          : "VS"}
-                      </div>
-                      <div className="mt-2 text-center text-[11px] leading-5 text-white/50 sm:text-sm">
-                        {formatMatchDate(selectedMatch.startTime)}
-                        <br />
-                        {formatMatchTime(selectedMatch.startTime)}
-                      </div>
-                    </div>
-
-                    <div className="flex min-w-0 flex-col items-center gap-3 text-center">
-                      <TeamLogo team={selectedMatch.awayTeam} size="lg" />
-                      <div>
-                        <div className="text-base font-black text-white sm:text-2xl">
-                          {selectedMatch.awayTeam.shortName ||
-                            selectedMatch.awayTeam.name}
-                        </div>
-                        <div className="mt-1 text-xs text-white/45 sm:text-sm">
-                          Гості
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 text-xs text-white/55">
-                    <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">
-                      Дедлайн:{" "}
-                      {new Date(selected.predictionDeadline).toLocaleString(
-                        "uk-UA"
-                      )}
-                    </div>
-
-                    {selected.customWeight ? (
-                      <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">
-                        Вага туру: {selected.customWeight}x
-                      </div>
-                    ) : null}
-
-                    {myPrediction ? (
-                      <div className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-emerald-200">
-                        Мій прогноз уже збережений
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-[32px] border border-white/10 bg-white/[0.05] px-4 py-5 sm:px-6 sm:py-6">
-              <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/40">
-                    Quick predict
-                  </p>
-                  <h3 className="mt-2 text-xl font-black text-white sm:text-2xl">
-                    Швидкий прогноз
-                  </h3>
-                  <p className="mt-1 text-sm text-white/50">
-                    Задай базовий рахунок або перейди до детального прогнозу на матч.
-                  </p>
-                </div>
-
-                {myPrediction ? (
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/60">
-                    Поточний: {myPrediction.predictedHome}:{myPrediction.predictedAway}
-                  </div>
-                ) : null}
-              </div>
-
-              {selected.isLocked ? (
-                <div className="space-y-3">
-                  <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-4 text-sm text-amber-100">
-                    Прогноз на цей матч уже закритий.
-                  </div>
-
-                  {myPrediction ? (
-                    <div className="inline-flex rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200">
-                      Мій прогноз: {myPrediction.predictedHome}:{myPrediction.predictedAway}
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-white/10 px-4 py-4 text-sm text-white/45">
-                      Ти не встиг подати прогноз.
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <Form method="post" className="space-y-5">
-                  <input type="hidden" name="matchId" value={selectedMatch.id} />
-
-                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-5">
-                    <ScoreStepperInput
-                      label={selectedMatch.homeTeam.shortName || selectedMatch.homeTeam.name}
-                      name="predictedHome"
-                      defaultValue={myPrediction?.predictedHome ?? ""}
-                    />
-
-                    <div className="pt-8 text-center text-3xl font-black text-white/25 sm:text-5xl">
-                      :
-                    </div>
-
-                    <ScoreStepperInput
-                      label={selectedMatch.awayTeam.shortName || selectedMatch.awayTeam.name}
-                      name="predictedAway"
-                      defaultValue={myPrediction?.predictedAway ?? ""}
-                    />
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <button
-                      type="submit"
-                      className="inline-flex h-14 items-center justify-center rounded-[22px] border border-white/15 bg-white px-5 text-sm font-black text-black shadow-[0_14px_34px_rgba(255,255,255,0.10)] transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_18px_40px_rgba(255,255,255,0.14)]"
-                    >
-                      {myPrediction ? "Оновити прогноз" : "Зберегти прогноз"}
-                    </button>
-
-                    <Link
-                      to={`../predict-advanced/${selectedMatch.id}`}
-                      className="inline-flex h-14 items-center justify-center rounded-[22px] border border-white/10 bg-white/[0.05] px-5 text-sm font-bold text-white backdrop-blur-sm transition-all duration-200 hover:-translate-y-[1px] hover:border-white/20 hover:bg-white/[0.08]"
-                    >
-                      {myPrediction ? "Відкрити детальний" : "Детальний прогноз"}
-                    </Link>
-                  </div>
-                </Form>
-              )}
-            </section>
+      {!selectedMatch ? (
+        <section className="rounded-[30px] border border-dashed border-white/10 bg-white/[0.03] px-6 py-10 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/60">
+            <TinyIconArrow />
           </div>
 
-          <aside className="space-y-4">
-            <section className="rounded-[28px] border border-white/10 bg-white/[0.05] px-4 py-5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/40">
-                    Match info
-                  </p>
-                  <h3 className="mt-2 text-lg font-black text-white">
-                    Поточний матч
-                  </h3>
+          <h3 className="mt-4 text-lg font-black text-white">
+            Спочатку обери матч
+          </h3>
+
+          <p className="mt-2 text-sm text-white/45">
+            Після вибору тут з’явиться швидкий прогноз і ставки учасників
+          </p>
+        </section>
+      ) : (
+        <div className="space-y-5">
+          <section className="rounded-[32px] border border-white/10 bg-white/[0.05] px-4 py-5 sm:px-6 sm:py-6">
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {selectedMatch.tournament ? (
+                    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/70">
+                      <div className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-white/85">
+                        {getTournamentLogoSrc(selectedMatch.tournament) ? (
+                          <img
+                            src={getTournamentLogoSrc(selectedMatch.tournament)!}
+                            alt={selectedMatch.tournament.name}
+                            className="h-3.5 w-3.5 object-contain"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <TinyIconBall />
+                        )}
+                      </div>
+                      <span>{selectedMatch.tournament.name}</span>
+                    </div>
+                  ) : null}
+
+                  {tournamentSubLabel ? (
+                    <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/55">
+                      {tournamentSubLabel}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/65">
+                  <span
+                    className={`h-2 w-2 rounded-full ${getStatusDotClass(
+                      selectedMatch.status
+                    )}`}
+                  />
+                  {getStatusLabel(selectedMatch.status)}
                 </div>
               </div>
 
-              <div className="mt-4 space-y-3 text-sm">
-                <div className="rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3">
-                  <div className="text-white/40">Дата</div>
-                  <div className="mt-1 font-semibold text-white">
-                    {formatMatchDate(selectedMatch.startTime)}
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
+                <div className="flex min-w-0 flex-col items-center gap-3 text-center">
+                  <TeamLogo team={selectedMatch.homeTeam} size="lg" />
+                  <div className="text-base font-black text-white sm:text-xl">
+                    {selectedMatch.homeTeam.shortName || selectedMatch.homeTeam.name}
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3">
-                  <div className="text-white/40">Час</div>
-                  <div className="mt-1 font-semibold text-white">
+                <div className="flex min-w-[96px] flex-col items-center">
+                  <div className="text-3xl font-black tracking-tight text-white sm:text-5xl">
+                    {myPrediction
+                      ? `${myPrediction.predictedHome}:${myPrediction.predictedAway}`
+                      : "VS"}
+                  </div>
+
+                  <div className="mt-2 text-center text-xs text-white/45 sm:text-sm">
+                    {formatMatchDateFull(selectedMatch.startTime)}
+                    <br />
                     {formatMatchTime(selectedMatch.startTime)}
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3">
-                  <div className="text-white/40">Турнір</div>
-                  <div className="mt-1 font-semibold text-white">
-                    {selectedMatch.tournament?.name || "—"}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3">
-                  <div className="text-white/40">Раунд</div>
-                  <div className="mt-1 font-semibold text-white">
-                    {tournamentSubLabel || "—"}
+                <div className="flex min-w-0 flex-col items-center gap-3 text-center">
+                  <TeamLogo team={selectedMatch.awayTeam} size="lg" />
+                  <div className="text-base font-black text-white sm:text-xl">
+                    {selectedMatch.awayTeam.shortName || selectedMatch.awayTeam.name}
                   </div>
                 </div>
               </div>
-            </section>
 
-            <section className="rounded-[28px] border border-white/10 bg-white/[0.05] px-4 py-5">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/40">
-                    Players
-                  </p>
-                  <h3 className="mt-2 text-lg font-black text-white">
-                    Прогнози учасників
+              <div className="flex flex-wrap gap-2 text-xs">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-white/55">
+                  <TinyIconClock />
+                  Дедлайн:{" "}
+                  {new Date(selected.predictionDeadline).toLocaleString("uk-UA")}
+                </div>
+
+                {selected.customWeight ? (
+                  <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-white/55">
+                    Вага: {selected.customWeight}x
+                  </div>
+                ) : null}
+
+                {myPrediction ? (
+                  <div className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-emerald-200">
+                    Прогноз уже є
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-[32px] border border-white/10 bg-white/[0.05] px-4 py-5 sm:px-6 sm:py-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-white">
+                  <TinyIconBall />
+                  <h3 className="text-lg font-black sm:text-xl">
+                    Швидкий прогноз
                   </h3>
                 </div>
 
-                <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/55">
-                  {participantPredictions.length}
+                <div className="mt-1 text-sm text-white/45">
+                  Просто введи рахунок
                 </div>
               </div>
 
-              <div className="mt-4 space-y-2">
-                {participantPredictions.length > 0 ? (
-                  participantPredictions.map((item) => (
-                    <ParticipantPredictionRow key={item.userId} item={item} />
-                  ))
+              {myPrediction ? (
+                <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/60">
+                  Поточний: {myPrediction.predictedHome}:{myPrediction.predictedAway}
+                </div>
+              ) : null}
+            </div>
+
+            {actionData?.error ? (
+              <div className="mb-4 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                {actionData.error}
+              </div>
+            ) : null}
+
+            {selected.isLocked ? (
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-4 text-sm text-amber-100">
+                  Прогноз на цей матч уже закритий
+                </div>
+
+                {myPrediction ? (
+                  <div className="inline-flex rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200">
+                    Мій прогноз: {myPrediction.predictedHome}:{myPrediction.predictedAway}
+                  </div>
                 ) : (
-                  <div className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-white/45">
-                    Поки що тут немає прогнозів.
+                  <div className="rounded-2xl border border-dashed border-white/10 px-4 py-4 text-sm text-white/45">
+                    Ти не встиг подати прогноз
                   </div>
                 )}
               </div>
-            </section>
-          </aside>
-        </section>
-      ) : (
-        <section className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-6 py-10 text-white/50">
-          Немає доступного матчу для вибору.
-        </section>
+            ) : (
+              <Form method="post" className="space-y-4">
+                <input type="hidden" name="matchId" value={selectedMatch.id} />
+
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-5">
+                  <QuickScoreInput
+                    name="predictedHome"
+                    teamName={
+                      selectedMatch.homeTeam.shortName || selectedMatch.homeTeam.name
+                    }
+                    defaultValue={myPrediction?.predictedHome ?? ""}
+                  />
+
+                  <div className="pt-7 text-center text-3xl font-black text-white/25 sm:text-5xl">
+                    :
+                  </div>
+
+                  <QuickScoreInput
+                    name="predictedAway"
+                    teamName={
+                      selectedMatch.awayTeam.shortName || selectedMatch.awayTeam.name
+                    }
+                    defaultValue={myPrediction?.predictedAway ?? ""}
+                  />
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="submit"
+                    className="inline-flex h-14 items-center justify-center gap-2 rounded-[22px] border border-white/15 bg-white px-5 text-sm font-black text-black transition hover:-translate-y-[1px]"
+                  >
+                    <TinyIconBall />
+                    {myPrediction ? "Оновити прогноз" : "Зберегти прогноз"}
+                  </button>
+
+                  <Link
+                    to={`../predict-advanced/${selectedMatch.id}`}
+                    className="inline-flex h-14 items-center justify-center gap-2 rounded-[22px] border border-white/10 bg-white/[0.05] px-5 text-sm font-bold text-white transition hover:-translate-y-[1px] hover:border-white/20 hover:bg-white/[0.08]"
+                  >
+                    <TinyIconArrow />
+                    Детальний прогноз
+                  </Link>
+                </div>
+              </Form>
+            )}
+          </section>
+
+          <section className="rounded-[28px] border border-white/10 bg-white/[0.05] px-4 py-5 sm:px-6 sm:py-6">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-white">
+                <TinyIconUsers />
+                <h3 className="text-lg font-black sm:text-xl">
+                  Хто як поставив
+                </h3>
+              </div>
+
+              <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/55">
+                {participantPredictions.length}
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {participantPredictions.length > 0 ? (
+                participantPredictions.map((item) => (
+                  <PredictionPersonRow key={item.userId} item={item} />
+                ))
+              ) : (
+                <div className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-white/45">
+                  Поки що тут немає прогнозів
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );
