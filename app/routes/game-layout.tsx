@@ -8,6 +8,7 @@ import {
   useLocation,
 } from "react-router";
 
+import { GameMemberRole, MembershipStatus } from "@prisma/client";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 
@@ -22,23 +23,42 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Game not found", { status: 404 });
   }
 
+  const game = await prisma.game.findUnique({
+    where: { id: gameId },
+  });
+
+  if (!game) {
+    throw new Response("Game not found", { status: 404 });
+  }
+
   const membership = await prisma.gameMember.findFirst({
     where: {
       gameId,
       userId: user.id,
+      status: MembershipStatus.ACTIVE,
     },
     select: {
       role: true,
-      game: true,
+      status: true,
     },
   });
 
-  if (!membership) throw redirect("/");
+  const isGameOwner = game.ownerId === user.id;
+
+  const canManageGame =
+    isGameOwner ||
+    membership?.role === GameMemberRole.OWNER ||
+    membership?.role === GameMemberRole.ADMIN;
+
+  if (!membership && !isGameOwner) {
+    throw redirect("/");
+  }
 
   return data({
     user,
-    game: membership.game,
-    role: membership.role,
+    game,
+    role: isGameOwner ? GameMemberRole.OWNER : membership?.role ?? null,
+    canManageGame,
   });
 }
 
@@ -145,10 +165,8 @@ function ShellLink({
 }
 
 export default function GameLayout() {
-  const { user, game, role } = useLoaderData<typeof loader>();
+  const { user, game, canManageGame } = useLoaderData<typeof loader>();
   const location = useLocation();
-
-  const canManageGame = role === "OWNER" || role === "ADMIN";
 
   const gameRootPath = `/games/${game.id}`;
 
@@ -181,6 +199,7 @@ export default function GameLayout() {
           >
             ← Lobby
           </Link>
+
           <div className="min-w-0 text-center">
             <div className="text-[10px] font-black uppercase tracking-[0.25em] text-[var(--muted)]">
               Game
@@ -189,6 +208,7 @@ export default function GameLayout() {
               {game.name}
             </div>
           </div>
+
           <Link
             to="/me"
             className="max-w-[90px] shrink-0 truncate rounded-xl px-2 py-2 text-right text-sm font-semibold text-[var(--text-soft)] transition hover:bg-[var(--card-highlight)] hover:text-[var(--text)] sm:max-w-[160px]"
@@ -198,7 +218,7 @@ export default function GameLayout() {
         </div>
 
         <div className="mx-auto max-w-7xl px-3 pb-3 pt-1 sm:px-6 sm:pb-4 sm:pt-1">
-          <nav className="flex min-h-[62px] gap-2  pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <nav className="flex min-h-[62px] gap-2 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <ShellLink
               to={gameRootPath}
               label="Home"
