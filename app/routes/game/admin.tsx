@@ -9,13 +9,28 @@ import {
   type LoaderFunctionArgs,
 } from "react-router";
 import { useMemo, useState } from "react";
-import {
-  GameMemberRole,
-  MatchStatus,
-  MembershipStatus,
-} from "@prisma/client";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
+
+const GAME_MEMBER_ROLE = {
+  OWNER: "OWNER",
+  ADMIN: "ADMIN",
+  MEMBER: "MEMBER",
+} as const;
+
+const MEMBERSHIP_STATUS = {
+  ACTIVE: "ACTIVE",
+} as const;
+
+const MATCH_STATUS = {
+  SCHEDULED: "SCHEDULED",
+  LIVE: "LIVE",
+  FINISHED: "FINISHED",
+  CANCELED: "CANCELED",
+  POSTPONED: "POSTPONED",
+} as const;
+
+type MatchStatusValue = (typeof MATCH_STATUS)[keyof typeof MATCH_STATUS];
 
 function getMatchOutcome(home: number, away: number) {
   if (home > away) return "HOME";
@@ -107,29 +122,41 @@ async function requireGameAdmin(request: Request, gameId: string) {
     throw redirect("/login");
   }
 
+  const game = await prisma.game.findUnique({
+    where: { id: gameId },
+  });
+
+  if (!game) {
+    throw new Response("Game not found", { status: 404 });
+  }
+
   const membership = await prisma.gameMember.findFirst({
     where: {
       gameId,
       userId: currentUser.id,
-      status: MembershipStatus.ACTIVE,
-      role: {
-        in: [GameMemberRole.OWNER, GameMemberRole.ADMIN],
-      },
+      status: MEMBERSHIP_STATUS.ACTIVE,
     },
     include: {
-      game: true,
       user: true,
     },
   });
 
-  if (!membership) {
+  const isOwnerByGame = game.ownerId === currentUser.id;
+  const isAdminByMembership =
+    membership?.role === GAME_MEMBER_ROLE.OWNER ||
+    membership?.role === GAME_MEMBER_ROLE.ADMIN;
+
+  if (!isOwnerByGame && !isAdminByMembership) {
     throw redirect(`/games/${gameId}`);
   }
 
   return {
     currentUser,
     membership,
-    game: membership.game,
+    game,
+    myRole: isOwnerByGame
+      ? GAME_MEMBER_ROLE.OWNER
+      : membership?.role ?? GAME_MEMBER_ROLE.MEMBER,
   };
 }
 
@@ -160,7 +187,7 @@ async function rescoreGameMatch(gameId: string, matchId: string) {
   const match = gameMatch.match;
 
   if (
-    match.status !== MatchStatus.FINISHED ||
+    match.status !== MATCH_STATUS.FINISHED ||
     match.homeScore === null ||
     match.awayScore === null
   ) {
@@ -228,10 +255,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Game not found", { status: 404 });
   }
 
-  const { currentUser, game, membership } = await requireGameAdmin(
-    request,
-    gameId
-  );
+  const { currentUser, game, myRole } = await requireGameAdmin(request, gameId);
 
   const [teams, tournaments, members, gameMatches, rounds, invites] =
     await Promise.all([
@@ -250,7 +274,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       prisma.gameMember.findMany({
         where: {
           gameId,
-          status: MembershipStatus.ACTIVE,
+          status: MEMBERSHIP_STATUS.ACTIVE,
         },
         include: {
           user: true,
@@ -311,7 +335,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   return data({
     currentUser,
     game,
-    myRole: membership.role,
+    myRole,
     teams,
     tournaments,
     rounds,
@@ -341,7 +365,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         gameId,
         code,
         createdById: currentUser.id,
-        roleOnJoin: GameMemberRole.MEMBER,
+        roleOnJoin: GAME_MEMBER_ROLE.MEMBER,
         maxUses: null,
         usedCount: 0,
       },
@@ -462,7 +486,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         homeTeamId,
         awayTeamId,
         startTime: new Date(startTimeRaw),
-        status: MatchStatus.SCHEDULED,
+        status: MATCH_STATUS.SCHEDULED,
         venue: venue || null,
         stageLabel: stageLabel || null,
         matchdayLabel: matchdayLabel || null,
@@ -531,7 +555,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const matchId = String(formData.get("matchId") || "");
     const homeScoreRaw = String(formData.get("homeScore") || "");
     const awayScoreRaw = String(formData.get("awayScore") || "");
-    const statusRaw = String(formData.get("status") || "SCHEDULED");
+    const statusRaw = String(formData.get("status") || MATCH_STATUS.SCHEDULED);
 
     if (!matchId) {
       return data({ error: "Матч не знайдено." }, { status: 400 });
@@ -566,15 +590,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
       data: {
         homeScore,
         awayScore,
-        status: statusRaw as MatchStatus,
+        status: statusRaw as MatchStatusValue,
         lockedAt:
-          statusRaw === "SCHEDULED" || statusRaw === "POSTPONED"
+          statusRaw === MATCH_STATUS.SCHEDULED ||
+          statusRaw === MATCH_STATUS.POSTPONED
             ? null
             : new Date(),
       },
     });
 
-    if (statusRaw === "FINISHED") {
+    if (statusRaw === MATCH_STATUS.FINISHED) {
       await prisma.gameMatch.update({
         where: { id: gameMatch.id },
         data: {
@@ -762,21 +787,21 @@ function AdminIcon({
   );
 }
 
-function StatusBadge({ status }: { status: MatchStatus }) {
+function StatusBadge({ status }: { status: string }) {
   const label =
-    status === MatchStatus.SCHEDULED
+    status === MATCH_STATUS.SCHEDULED
       ? "Заплановано"
-      : status === MatchStatus.LIVE
-        ? "Live"
-        : status === MatchStatus.FINISHED
-          ? "Завершено"
-          : status === MatchStatus.POSTPONED
-            ? "Перенесено"
-            : "Скасовано";
+      : status === MATCH_STATUS.LIVE
+      ? "Live"
+      : status === MATCH_STATUS.FINISHED
+      ? "Завершено"
+      : status === MATCH_STATUS.POSTPONED
+      ? "Перенесено"
+      : "Скасовано";
 
   return (
     <span className="inline-flex items-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.16em] text-white/75">
-      {status === MatchStatus.LIVE ? (
+      {status === MATCH_STATUS.LIVE ? (
         <span className="mr-2 h-1.5 w-1.5 rounded-full bg-red-400" />
       ) : null}
       {label}
@@ -806,19 +831,19 @@ export default function GameAdminPage() {
   const [finishedLimit, setFinishedLimit] = useState(3);
 
   const { liveMatches, upcomingMatches, finishedMatches } = useMemo(() => {
-    const live = [];
-    const upcoming = [];
-    const finished = [];
+    const live = gameMatches.filter(
+      (gameMatch) => gameMatch.match.status === MATCH_STATUS.LIVE
+    );
 
-    for (const gameMatch of gameMatches) {
-      if (gameMatch.match.status === MatchStatus.LIVE) {
-        live.push(gameMatch);
-      } else if (gameMatch.match.status === MatchStatus.FINISHED) {
-        finished.push(gameMatch);
-      } else {
-        upcoming.push(gameMatch);
-      }
-    }
+    const finished = gameMatches.filter(
+      (gameMatch) => gameMatch.match.status === MATCH_STATUS.FINISHED
+    );
+
+    const upcoming = gameMatches.filter(
+      (gameMatch) =>
+        gameMatch.match.status !== MATCH_STATUS.LIVE &&
+        gameMatch.match.status !== MATCH_STATUS.FINISHED
+    );
 
     return {
       liveMatches: live,
@@ -1577,7 +1602,8 @@ export default function GameAdminPage() {
                   </div>
 
                   <div className="mt-1 text-sm text-white/50">
-                    {member.role} · {new Date(member.joinedAt).toLocaleDateString("uk-UA")}
+                    {member.role} ·{" "}
+                    {new Date(member.joinedAt).toLocaleDateString("uk-UA")}
                   </div>
                 </div>
               ))}
