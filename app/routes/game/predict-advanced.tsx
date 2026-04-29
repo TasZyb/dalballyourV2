@@ -1305,7 +1305,7 @@ function PlayerPickerModal({
   }, [open]);
 
   useEffect(() => {
-    if (!open) setSearch("");
+    if (open) setSearch("");
   }, [open]);
 
   if (!open) return null;
@@ -1325,9 +1325,9 @@ function PlayerPickerModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:items-center sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-6">
       <div
-        className="w-full max-w-2xl overflow-hidden rounded-[28px] border shadow-[0_25px_80px_rgba(0,0,0,0.28)]"
+        className="flex h-[82vh] min-h-[620px] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border shadow-[0_25px_80px_rgba(0,0,0,0.28)] max-sm:h-[88vh] max-sm:min-h-0"
         style={{
           borderColor: "var(--border)",
           background: "var(--panel-solid)",
@@ -1335,15 +1335,13 @@ function PlayerPickerModal({
         }}
       >
         <div
-          className="flex items-start justify-between gap-3 border-b px-4 py-4 sm:px-5"
+          className="flex shrink-0 items-start justify-between gap-3 border-b px-4 py-4 sm:px-5"
           style={{
             borderColor: "var(--border)",
           }}
         >
           <div className="min-w-0">
-            <div className="truncate text-lg font-black">
-              {title}
-            </div>
+            <div className="truncate text-lg font-black">{title}</div>
 
             {subtitle ? (
               <div
@@ -1358,7 +1356,7 @@ function PlayerPickerModal({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border transition hover:opacity-90"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border transition hover:opacity-90"
             style={{
               borderColor: "var(--border)",
               background: "var(--panel)",
@@ -1370,7 +1368,7 @@ function PlayerPickerModal({
         </div>
 
         <div
-          className="border-b px-4 py-4 sm:px-5"
+          className="shrink-0 border-b px-4 py-4 sm:px-5"
           style={{
             borderColor: "var(--border)",
           }}
@@ -1388,11 +1386,11 @@ function PlayerPickerModal({
           />
         </div>
 
-        <div className="max-h-[65vh] overflow-y-auto px-4 py-4 sm:px-5">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
           <div className="space-y-2">
             {filteredPlayers.length === 0 ? (
               <div
-                className="rounded-2xl border border-dashed px-4 py-8 text-center text-sm"
+                className="flex min-h-[360px] items-center justify-center rounded-2xl border border-dashed px-4 py-8 text-center text-sm"
                 style={{
                   borderColor: "var(--border)",
                   background: "var(--card-highlight)",
@@ -1485,7 +1483,6 @@ function PlayerPickerModal({
     </div>
   );
 }
-
 export default function PredictAdvancedPage() {
   const { match, prediction, isLocked } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>() as ActionData | undefined;
@@ -1516,6 +1513,10 @@ export default function PredictAdvancedPage() {
     normalizeScorersPayload(prediction?.scorerPicks ?? [])
   );
   const [activeSlot, setActiveSlot] = useState<ActiveSlotState>(null);
+  const [formationWarning, setFormationWarning] = useState<{
+    side: TeamSide;
+    nextFormation: string;
+  } | null>(null);
   const [isScorerPickerOpen, setIsScorerPickerOpen] = useState(false);
   const [isMvpPickerOpen, setIsMvpPickerOpen] = useState(false);
 
@@ -1576,18 +1577,12 @@ export default function PredictAdvancedPage() {
   }, [activeSlot, lineupState]);
 
   const currentScorerPlayers = useMemo(() => {
-    const starterIds = getStarterPlayerIdsForSide(lineupState, activeTeamSide);
-    return activePlayers.filter(
-      (player) =>
-        starterIds.has(player.id) ||
-        Boolean(getScorerForPlayer(scorerState, player.id, activeTeamSide))
-    );
-  }, [activePlayers, lineupState, scorerState, activeTeamSide]);
+    return activePlayers;
+  }, [activePlayers]);
 
   const currentMvpPlayers = useMemo(() => {
-    const starterIds = getStarterPlayerIdsForSide(lineupState, activeTeamSide);
-    return activePlayers.filter((player) => starterIds.has(player.id));
-  }, [activePlayers, lineupState, activeTeamSide]);
+    return activePlayers;
+  }, [activePlayers]);
 
   const activeSideScorers = useMemo(
     () => getScorersForSide(scorerState, activeTeamSide),
@@ -1596,6 +1591,35 @@ export default function PredictAdvancedPage() {
 
   const activeMvpPlayer =
     activePlayers.find((p) => p.id === predictedMvpPlayerId) ?? null;
+
+  function hasLineupForSide(side: TeamSide) {
+    return lineupState.some((item) => item.teamSide === side && item.isStarter);
+  }
+
+  function requestFormationChange(side: TeamSide, nextFormation: string) {
+    const currentFormation =
+      side === "HOME" ? predictedHomeFormation : predictedAwayFormation;
+
+    if (currentFormation === nextFormation) return;
+
+    if (hasLineupForSide(side)) {
+      setFormationWarning({ side, nextFormation });
+      return;
+    }
+
+    applyFormationChange(side, nextFormation);
+  }
+
+  function applyFormationChange(side: TeamSide, nextFormation: string) {
+    if (side === "HOME") {
+      setPredictedHomeFormation(nextFormation);
+    } else {
+      setPredictedAwayFormation(nextFormation);
+    }
+
+    setLineupState((prev) => prev.filter((item) => item.teamSide !== side));
+    setFormationWarning(null);
+  }
 
   function openSlot(side: TeamSide, slot: PitchSlot) {
     if (isLocked) return;
@@ -1841,6 +1865,75 @@ export default function PredictAdvancedPage() {
           />
         </section>
 
+        <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 text-[var(--text)] shadow-sm sm:p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--background)] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em]">
+                <IconFormation />
+                Схема активної команди
+              </div>
+
+              <h2 className="mt-3 text-xl font-black">{activeTeam.name}</h2>
+
+              <p className="mt-1 text-sm text-[var(--text-muted)]">
+                Змінюється тільки схема тієї команди, яку ти зараз редагуєш.
+              </p>
+            </div>
+
+            <select
+              value={activeFormation}
+              onChange={(e) =>
+                requestFormationChange(activeTeamSide, e.target.value)
+              }
+              disabled={isLocked}
+              className="h-12 w-full rounded-2xl border border-[var(--border)] bg-[var(--background)] px-4 text-sm font-bold outline-none sm:w-[180px]"
+            >
+              {FORMATIONS.map((item) => (
+                <option key={item} value={item} className="text-black">
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {formationWarning ? (
+            <div className="mt-4 rounded-2xl border border-amber-300/40 bg-amber-500/10 p-4">
+              <div className="text-sm font-black text-amber-700 dark:text-amber-100">
+                Зміна схеми очистить склад
+              </div>
+
+              <p className="mt-1 text-sm text-amber-700/80 dark:text-amber-100/75">
+                Для {getTeamBySide(match, formationWarning.side).name} вже
+                складений стартовий склад. Якщо змінити схему, попередній склад
+                цієї команди злетить і ти почнеш з нуля.
+              </p>
+
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() =>
+                    applyFormationChange(
+                      formationWarning.side,
+                      formationWarning.nextFormation
+                    )
+                  }
+                  className="rounded-2xl bg-amber-500 px-4 py-3 text-sm font-black text-black transition hover:opacity-90"
+                >
+                  Так, змінити і очистити
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormationWarning(null)}
+                  className="rounded-2xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm font-bold transition hover:opacity-90"
+                >
+                  Скасувати
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </section>
+
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_380px]">
           <div className="space-y-4">
             <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-sm sm:p-5">
@@ -1968,44 +2061,6 @@ export default function PredictAdvancedPage() {
                   </div>
                 </section>
 
-                <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 text-[var(--text)] shadow-sm sm:p-5">
-                  <div className="text-lg font-semibold">Схеми команд</div>
-
-                  <div className="mt-4 grid gap-4">
-                    <div>
-                      <div className="mb-2 text-sm font-medium">{match.homeTeam.name}</div>
-                      <select
-                        value={predictedHomeFormation}
-                        onChange={(e) => setPredictedHomeFormation(e.target.value)}
-                        className="h-11 w-full rounded-2xl border border-[var(--border)] bg-[var(--background)] px-4 text-sm outline-none "
-                        disabled={isLocked}
-                      >
-                        {FORMATIONS.map((item) => (
-                          <option key={item} value={item} className="text-black">
-                            {item}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <div className="mb-2 text-sm font-medium">{match.awayTeam.name}</div>
-                      <select
-                        value={predictedAwayFormation}
-                        onChange={(e) => setPredictedAwayFormation(e.target.value)}
-                        className="h-11 w-full rounded-2xl border border-[var(--border)] bg-[var(--background)] px-4 text-sm outline-none "
-                        disabled={isLocked}
-                      >
-                        {FORMATIONS.map((item) => (
-                          <option key={item} value={item} className="text-black">
-                            {item}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </section>
-
                 <section className="rounded-[28px] border border-[var(--border)] bg-[var(--background)] p-4 text-[var(--text)] shadow-sm sm:p-5">
                   <div className="text-lg font-semibold">Нотатки</div>
                   <div className="mt-1 text-sm text-[var(--text)]">
@@ -2078,7 +2133,7 @@ export default function PredictAdvancedPage() {
                 <section className="rounded-[28px] border border-[var(--border)] bg-[var(--background)] p-4 text-[var(--text)] shadow-sm dark:border-white/10 dark:bg-white/[0.05] dark:text-white sm:p-5">
                   <div className="text-lg font-semibold">Голи активної команди</div>
                   <div className="mt-1 text-sm text-[var(--text)]">
-                    Показуються тільки вже додані гравці або можна додати нового в межах ліміту голів.
+                    Можна вибрати будь-якого гравця активної команди в межах прогнозованої кількості голів.
                   </div>
 
                   <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--background)] p-4 dark:border-white/10 dark:bg-white/[0.03]">
@@ -2209,7 +2264,7 @@ export default function PredictAdvancedPage() {
                 <section className="rounded-[28px] border border-[var(--border)] bg-[var(--background)] p-4 text-[var(--text)] shadow-sm sm:p-5">
                   <div className="text-lg font-semibold">MVP команди</div>
                   <div className="mt-1 text-sm text-[var(--text)]">
-                    Показуємо тільки релевантних гравців активної сторони.
+                    MVP можна вибрати з будь-якого гравця активної команди.
                   </div>
 
                   {activeMvpPlayer ? (
@@ -2276,7 +2331,7 @@ export default function PredictAdvancedPage() {
       <PlayerPickerModal
         open={isScorerPickerOpen}
         title={`${activeTeam.name} · Автор голу`}
-        subtitle="Показуються тільки гравці активної команди, які вже в складі або вже були додані в голи"
+        subtitle="Можна вибрати будь-якого гравця активної команди"
         players={currentScorerPlayers}
         onClose={closeScorerPicker}
         onPick={handlePickScorer}
@@ -2285,7 +2340,7 @@ export default function PredictAdvancedPage() {
       <PlayerPickerModal
         open={isMvpPickerOpen}
         title={`${activeTeam.name} · MVP`}
-        subtitle="Обери MVP серед стартового складу активної команди"
+        subtitle="Можна вибрати будь-якого гравця активної команди"
         players={currentMvpPlayers}
         currentPlayerId={predictedMvpPlayerId || null}
         onClose={() => setIsMvpPickerOpen(false)}
