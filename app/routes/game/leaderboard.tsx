@@ -435,7 +435,7 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className="shrink-0 rounded-2xl px-3 py-2 text-xs font-semibold transition sm:px-4 sm:text-sm"
+      className="shrink-0 rounded-full px-3 py-2 text-xs font-black uppercase tracking-[0.12em] transition"
       style={
         active
           ? {
@@ -445,7 +445,7 @@ function TabButton({
                 "1px solid color-mix(in srgb, var(--accent) 28%, transparent)",
             }
           : {
-              background: "var(--panel)",
+              background: "transparent",
               color: "var(--text-soft)",
               border: "1px solid var(--border)",
             }
@@ -514,7 +514,52 @@ function FormMini({ values }: { values: number[] }) {
   );
 }
 
-function MobileCompactRow({
+function MedalIcon({ place }: { place: 1 | 2 | 3 }) {
+  const styles =
+    place === 1
+      ? { fill: "#fbbf24", inner: "#fde68a" }
+      : place === 2
+      ? { fill: "#cbd5e1", inner: "#e2e8f0" }
+      : { fill: "#fb923c", inner: "#fdba74" };
+
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0">
+      <path d="M7 2h4l1 4H8L7 2Zm6 0h4l-1 4h-4l1-4Z" fill="#64748b" opacity="0.8" />
+      <circle cx="12" cy="14" r="6.5" fill={styles.fill} />
+      <circle cx="12" cy="14" r="3.2" fill={styles.inner} />
+    </svg>
+  );
+}
+
+function rankAccentStyle(rank: number) {
+  if (rank === 1) {
+    return {
+      background: "color-mix(in srgb, #fbbf24 10%, transparent)",
+      borderTop: "1px solid color-mix(in srgb, #fbbf24 24%, transparent)",
+    };
+  }
+
+  if (rank === 2) {
+    return {
+      background: "color-mix(in srgb, #cbd5e1 8%, transparent)",
+      borderTop: "1px solid color-mix(in srgb, #cbd5e1 18%, transparent)",
+    };
+  }
+
+  if (rank === 3) {
+    return {
+      background: "color-mix(in srgb, #fb923c 8%, transparent)",
+      borderTop: "1px solid color-mix(in srgb, #fb923c 18%, transparent)",
+    };
+  }
+
+  return {
+    background: "transparent",
+    borderTop: "1px solid var(--border)",
+  };
+}
+
+function MobileRow({
   player,
   currentUserId,
   view,
@@ -524,48 +569,56 @@ function MobileCompactRow({
   view: LeaderboardView;
 }) {
   const isMe = currentUserId === player.id;
+  const isTop3 = player.rank <= 3;
 
   let mainValue = `${player.weightedPoints}`;
-  let subLeft = `${player.gapToLeader} behind`;
-  let subRight = `${player.finishedPredictionsCount} matches`;
+  let subText = `${player.finishedPredictionsCount} матчів`;
 
   if (view === "form") {
     mainValue = `${player.last5Average}`;
-    subLeft = `Streak ${player.currentStreak}`;
-    subRight = `Best ${player.bestStreak}`;
+    subText = `стрік ${player.currentStreak} • best ${player.bestStreak}`;
   }
 
   if (view === "accuracy") {
     mainValue = formatPercent(player.accuracyRate);
-    subLeft = `${formatPercent(player.exactRate)} exact`;
-    subRight = `${formatPercent(player.wrongRate)} wrong`;
+    subText = `${formatPercent(player.exactRate)} exact • ${formatPercent(
+      player.wrongRate
+    )} wrong`;
   }
 
   if (view === "exact") {
     mainValue = `${player.exactHits}`;
-    subLeft = `${formatPercent(player.exactRate)} exact`;
-    subRight = `${player.correctResults} correct`;
+    subText = `${player.correctResults} влучань`;
   }
 
   if (view === "risk") {
     mainValue = `${player.weightedMatchesPoints}`;
-    subLeft = `${player.weightedMatchesCount} heavy`;
-    subRight = `avg ${player.weightedMatchesAverage}`;
+    subText = `${player.weightedMatchesCount} важких • avg ${player.weightedMatchesAverage}`;
   }
 
   return (
     <div
-      className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3"
+      className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3"
       style={{
-        background: isMe ? "var(--accent-soft)" : "transparent",
-        borderTop: "1px solid var(--border)",
+        ...(isTop3 ? rankAccentStyle(player.rank) : { borderTop: "1px solid var(--border)" }),
+        background: isMe
+          ? "var(--accent-soft)"
+          : isTop3
+          ? rankAccentStyle(player.rank).background
+          : "transparent",
       }}
     >
-      <div
-        className="text-sm font-black tabular-nums"
-        style={{ color: "var(--muted)" }}
-      >
-        #{player.rank}
+      <div className="flex items-center gap-2">
+        {player.rank <= 3 ? (
+          <MedalIcon place={player.rank as 1 | 2 | 3} />
+        ) : (
+          <div
+            className="text-sm font-black tabular-nums"
+            style={{ color: "var(--muted)" }}
+          >
+            #{player.rank}
+          </div>
+        )}
       </div>
 
       <div className="min-w-0">
@@ -573,112 +626,81 @@ function MobileCompactRow({
           <Avatar name={player.name} image={player.image} size="sm" />
           <div className="min-w-0">
             <div
-              className="truncate text-sm font-bold"
+              className="truncate text-sm font-black"
               style={{ color: "var(--text)" }}
             >
               {player.name}
             </div>
-            <div
-              className="truncate text-[11px]"
-              style={{ color: "var(--text-soft)" }}
-            >
-              {subLeft} • {subRight}
+            <div className="truncate text-[11px]" style={{ color: "var(--text-soft)" }}>
+              {subText}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 text-right">
+      <div className="text-right">
         <div
-          className="text-base font-black leading-none tabular-nums"
+          className="text-base font-black tabular-nums"
           style={{ color: "var(--text)" }}
         >
           {mainValue}
         </div>
-
-        <span
-          className="inline-flex min-w-10 items-center justify-center rounded-full px-2 py-1 text-[10px] font-bold"
-          style={getMovementTone(player.movement)}
-        >
-          {formatMovement(player.movement)}
-        </span>
+        <div className="mt-1 inline-flex justify-end">
+          <span
+            className="inline-flex rounded-full px-2 py-1 text-[10px] font-bold"
+            style={getMovementTone(player.movement)}
+          >
+            {formatMovement(player.movement)}
+          </span>
+        </div>
       </div>
     </div>
   );
 }
 
-function HighlightCard({
+function HighlightChip({
   label,
-  title,
   value,
-  note,
   accent = "accent",
 }: {
   label: string;
-  title: string;
   value: string;
-  note?: string;
   accent?: "accent" | "success" | "warning";
 }) {
-  const accentStyles =
+  const styles =
     accent === "success"
       ? {
-          chipBg: "var(--success-soft)",
-          chipColor: "var(--success)",
-          chipBorder:
+          bg: "var(--success-soft)",
+          color: "var(--success)",
+          border:
             "1px solid color-mix(in srgb, var(--success) 24%, transparent)",
         }
       : accent === "warning"
       ? {
-          chipBg: "color-mix(in srgb, #f59e0b 14%, transparent)",
-          chipColor: "#f59e0b",
-          chipBorder: "1px solid color-mix(in srgb, #f59e0b 24%, transparent)",
+          bg: "color-mix(in srgb, #f59e0b 14%, transparent)",
+          color: "#f59e0b",
+          border: "1px solid color-mix(in srgb, #f59e0b 24%, transparent)",
         }
       : {
-          chipBg: "var(--accent-soft)",
-          chipColor: "var(--accent)",
-          chipBorder:
+          bg: "var(--accent-soft)",
+          color: "var(--accent)",
+          border:
             "1px solid color-mix(in srgb, var(--accent) 24%, transparent)",
         };
 
   return (
     <div
-      className="rounded-3xl p-4"
+      className="rounded-2xl px-3 py-2"
       style={{
-        background: "var(--panel)",
-        border: "1px solid var(--border)",
+        background: styles.bg,
+        color: styles.color,
+        border: styles.border,
       }}
     >
-      <div
-        className="inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em]"
-        style={{
-          background: accentStyles.chipBg,
-          color: accentStyles.chipColor,
-          border: accentStyles.chipBorder,
-        }}
-      >
+      <div className="text-[10px] font-black uppercase tracking-[0.14em] opacity-80">
         {label}
       </div>
-
-      <div
-        className="mt-3 truncate text-sm font-semibold"
-        style={{ color: "var(--text-soft)" }}
-      >
-        {title}
-      </div>
-
-      <div
-        className="mt-2 text-2xl font-black tracking-tight tabular-nums"
-        style={{ color: "var(--text)" }}
-      >
-        {value}
-      </div>
-
-      {note ? (
-        <div className="mt-2 text-xs" style={{ color: "var(--text-soft)" }}>
-          {note}
-        </div>
-      ) : null}
+      <div className="mt-1 text-sm font-black">{value}</div>
     </div>
   );
 }
@@ -746,9 +768,10 @@ export default function LeaderboardPage() {
   }, [leaderboard, view]);
 
   return (
-    <>
+    <div className="space-y-4">
+
       <section
-        className="rounded-3xl p-3 sm:p-4"
+        className="rounded-[28px] p-3 sm:p-4"
         style={{
           background: "var(--panel-strong)",
           border: "1px solid var(--border)",
@@ -760,10 +783,10 @@ export default function LeaderboardPage() {
               active={view === "overview"}
               onClick={() => setView("overview")}
             >
-              Загальний рейтинг
+              Рейтинг
             </TabButton>
             <TabButton active={view === "form"} onClick={() => setView("form")}>
-              Гаряча форма
+              Форма
             </TabButton>
             <TabButton
               active={view === "accuracy"}
@@ -775,29 +798,26 @@ export default function LeaderboardPage() {
               Exact
             </TabButton>
             <TabButton active={view === "risk"} onClick={() => setView("risk")}>
-              Важкі матчі
+              Важкі
             </TabButton>
           </div>
         </div>
 
         <div
-          className="mt-4 overflow-hidden rounded-3xl"
+          className="mt-3 overflow-hidden rounded-[24px]"
           style={{
             background: "var(--panel)",
             border: "1px solid var(--border)",
           }}
         >
           {displayedRows.length === 0 ? (
-            <div
-              className="p-4 text-sm"
-              style={{ color: "var(--text-soft)" }}
-            >
-              Поки що немає даних для лідерборду.
+            <div className="p-4 text-sm" style={{ color: "var(--text-soft)" }}>
+              Поки що немає даних.
             </div>
           ) : (
             <>
               <div
-                className="grid grid-cols-[36px_minmax(0,1fr)_auto] gap-3 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.16em] md:hidden"
+                className="grid grid-cols-[40px_minmax(0,1fr)_auto] gap-3 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] md:hidden"
                 style={{
                   color: "var(--muted)",
                   borderBottom: "1px solid var(--border)",
@@ -805,12 +825,12 @@ export default function LeaderboardPage() {
               >
                 <div>#</div>
                 <div>Гравець</div>
-                <div>Value</div>
+                <div>value</div>
               </div>
 
               <div className="md:hidden">
                 {displayedRows.map((player) => (
-                  <MobileCompactRow
+                  <MobileRow
                     key={player.id}
                     player={player}
                     currentUserId={currentUser?.id}
@@ -829,38 +849,59 @@ export default function LeaderboardPage() {
                           borderBottom: "1px solid var(--border)",
                         }}
                       >
-                        <th className="px-4 py-4 text-left font-semibold">#</th>
-                        <th className="px-4 py-4 text-left font-semibold">Гравець</th>
-                        <th className="px-4 py-4 text-right font-semibold">Очки</th>
-                        <th className="px-4 py-4 text-right font-semibold">Gap</th>
-                        <th className="px-4 py-4 text-right font-semibold">Acc</th>
-                        <th className="px-4 py-4 text-right font-semibold">Exact</th>
-                        <th className="px-4 py-4 text-right font-semibold">Стрік</th>
-                        <th className="px-4 py-4 text-left font-semibold">Форма</th>
-                        <th className="px-4 py-4 text-right font-semibold">Move</th>
+                        <th className="px-4 py-3 text-left font-black">#</th>
+                        <th className="px-4 py-3 text-left font-black">Гравець</th>
+                        <th className="px-4 py-3 text-right font-black">Очки</th>
+                        <th className="px-4 py-3 text-right font-black">Gap</th>
+                        <th className="px-4 py-3 text-right font-black">Acc</th>
+                        <th className="px-4 py-3 text-right font-black">Exact</th>
+                        <th className="px-4 py-3 text-right font-black">Стрік</th>
+                        <th className="px-4 py-3 text-left font-black">Форма</th>
+                        <th className="px-4 py-3 text-right font-black">Move</th>
                       </tr>
                     </thead>
 
                     <tbody>
                       {displayedRows.map((player) => {
                         const isMe = player.id === currentUser?.id;
+                        const isTop3 = player.rank <= 3;
 
                         return (
                           <tr
                             key={player.id}
                             style={{
-                              borderTop: "1px solid var(--border)",
-                              background: isMe ? "var(--accent-soft)" : "transparent",
+                              ...(isTop3
+                                ? rankAccentStyle(player.rank)
+                                : { borderTop: "1px solid var(--border)" }),
+                              background: isMe
+                                ? "var(--accent-soft)"
+                                : isTop3
+                                ? rankAccentStyle(player.rank).background
+                                : "transparent",
                             }}
                           >
-                            <td
-                              className="px-4 py-4 font-black tabular-nums"
-                              style={{ color: "var(--muted)" }}
-                            >
-                              #{player.rank}
+                            <td className="px-4 py-3">
+                              {player.rank <= 3 ? (
+                                <div className="flex items-center gap-2">
+                                  <MedalIcon place={player.rank as 1 | 2 | 3} />
+                                  <span
+                                    className="font-black tabular-nums"
+                                    style={{ color: "var(--text)" }}
+                                  >
+                                    #{player.rank}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span
+                                  className="font-black tabular-nums"
+                                  style={{ color: "var(--muted)" }}
+                                >
+                                  #{player.rank}
+                                </span>
+                              )}
                             </td>
 
-                            <td className="px-4 py-4">
+                            <td className="px-4 py-3">
                               <div className="flex items-center gap-3">
                                 <Avatar
                                   name={player.name}
@@ -869,7 +910,7 @@ export default function LeaderboardPage() {
                                 />
                                 <div className="min-w-0">
                                   <div
-                                    className="truncate font-bold"
+                                    className="truncate font-black"
                                     style={{ color: "var(--text)" }}
                                   >
                                     {player.name}
@@ -878,52 +919,60 @@ export default function LeaderboardPage() {
                                     className="text-xs"
                                     style={{ color: "var(--text-soft)" }}
                                   >
-                                    {player.finishedPredictionsCount} завершених прогнозів
+                                    {player.finishedPredictionsCount} матчів
                                   </div>
                                 </div>
                               </div>
                             </td>
 
                             <td
-                              className="px-4 py-4 text-right text-base font-black tabular-nums"
+                              className="px-4 py-3 text-right text-base font-black tabular-nums"
                               style={{ color: "var(--text)" }}
                             >
-                              {player.weightedPoints}
+                              {view === "overview"
+                                ? player.weightedPoints
+                                : view === "form"
+                                ? player.last5Average
+                                : view === "accuracy"
+                                ? formatPercent(player.accuracyRate)
+                                : view === "exact"
+                                ? player.exactHits
+                                : player.weightedMatchesPoints}
                             </td>
 
                             <td
-                              className="px-4 py-4 text-right tabular-nums"
+                              className="px-4 py-3 text-right tabular-nums"
                               style={{ color: "var(--text-soft)" }}
                             >
                               {player.gapToLeader}
                             </td>
 
                             <td
-                              className="px-4 py-4 text-right tabular-nums"
+                              className="px-4 py-3 text-right tabular-nums"
                               style={{ color: "var(--text-soft)" }}
                             >
                               {formatPercent(player.accuracyRate)}
                             </td>
 
                             <td
-                              className="px-4 py-4 text-right tabular-nums"
+                              className="px-4 py-3 text-right tabular-nums"
                               style={{ color: "var(--text-soft)" }}
                             >
                               {player.exactHits}
                             </td>
 
                             <td
-                              className="px-4 py-4 text-right tabular-nums"
+                              className="px-4 py-3 text-right tabular-nums"
                               style={{ color: "var(--text-soft)" }}
                             >
                               {player.currentStreak}
                             </td>
 
-                            <td className="px-4 py-4">
+                            <td className="px-4 py-3">
                               <FormMini values={player.last5Form} />
                             </td>
 
-                            <td className="px-4 py-4 text-right">
+                            <td className="px-4 py-3 text-right">
                               <span
                                 className="inline-flex rounded-full px-2.5 py-1 text-xs font-bold"
                                 style={getMovementTone(player.movement)}
@@ -943,149 +992,112 @@ export default function LeaderboardPage() {
         </div>
       </section>
 
-      <section className="mt-5">
-        <div className="mb-3">
-          <div
-            className="text-[11px] font-semibold uppercase tracking-[0.22em]"
-            style={{ color: "var(--muted)" }}
-          >
-            Highlights
-          </div>
-          <h2
-            className="mt-1 text-xl font-black tracking-tight"
-            style={{ color: "var(--text)" }}
-          >
-            Хто зараз найкрутіший
-          </h2>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <HighlightCard
-            label="HOT FORM"
-            title={highlights.hottestPlayer?.name ?? "—"}
-            value={
-              highlights.hottestPlayer
-                ? `${highlights.hottestPlayer.last5Average}`
-                : "—"
-            }
-            note="Найкраща середня форма за останні 5"
-            accent="warning"
-          />
-
-          <HighlightCard
-            label="ACCURACY"
-            title={highlights.mostAccurate?.name ?? "—"}
-            value={
-              highlights.mostAccurate
-                ? formatPercent(highlights.mostAccurate.accuracyRate)
-                : "—"
-            }
-            note="Найвища точність прогнозів"
-            accent="success"
-          />
-
-          <HighlightCard
-            label="EXACT KING"
-            title={highlights.exactKing?.name ?? "—"}
-            value={String(highlights.exactKing?.exactHits ?? "—")}
-            note="Найбільше точних рахунків"
-          />
-
-          <HighlightCard
-            label="BEST STREAK"
-            title={highlights.bestStreakPlayer?.name ?? "—"}
-            value={String(highlights.bestStreakPlayer?.bestStreak ?? "—")}
-            note="Найдовша безпрограшна серія"
-            accent="success"
-          />
-
-          <HighlightCard
-            label="YOU"
-            title={highlights.me?.name ?? "Ти"}
-            value={
-              highlights.me
-                ? `#${highlights.me.rank} • ${highlights.me.weightedPoints}`
-                : "—"
-            }
-            note={
-              highlights.me
-                ? `${formatPercent(highlights.me.accuracyRate)} accuracy • ${highlights.me.exactHits} exact`
-                : "Тебе ще немає в таблиці"
-            }
-          />
-        </div>
-
-        {highlights.me ? (
-          <div
-            className="mt-3 rounded-3xl p-4"
-            style={{
-              background: "var(--panel)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div
-                  className="text-[11px] font-semibold uppercase tracking-[0.18em]"
-                  style={{ color: "var(--muted)" }}
-                >
-                  Твій зріз
-                </div>
-                <div
-                  className="mt-1 text-lg font-black"
-                  style={{ color: "var(--text)" }}
-                >
-                  #{highlights.me.rank} у таблиці • {highlights.me.weightedPoints} pts
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <span
-                  className="inline-flex rounded-full px-3 py-1.5 text-xs font-bold"
-                  style={{
-                    background: "var(--accent-soft)",
-                    color: "var(--accent)",
-                    border:
-                      "1px solid color-mix(in srgb, var(--accent) 24%, transparent)",
-                  }}
-                >
-                  {formatPercent(highlights.me.accuracyRate)} accuracy
-                </span>
-
-                <span
-                  className="inline-flex rounded-full px-3 py-1.5 text-xs font-bold"
-                  style={{
-                    background: "var(--success-soft)",
-                    color: "var(--success)",
-                    border:
-                      "1px solid color-mix(in srgb, var(--success) 24%, transparent)",
-                  }}
-                >
-                  {highlights.me.exactHits} exact
-                </span>
-
-                <span
-                  className="inline-flex rounded-full px-3 py-1.5 text-xs font-bold"
-                  style={getMovementTone(highlights.me.movement)}
-                >
-                  {formatMovement(highlights.me.movement)} move
-                </span>
-
-                <span
-                  className="inline-flex rounded-full px-3 py-1.5 text-xs font-bold"
-                  style={{
-                    background: "var(--panel-strong)",
-                    color: "var(--text-soft)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  gap {highlights.me.gapToLeader}
-                </span>
-              </div>
+      <section
+        className="rounded-[28px] px-4 py-4 sm:px-5"
+        style={{
+          background:
+            "linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, transparent), var(--panel-strong))",
+          border: "1px solid var(--border)",
+        }}
+      >
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div
+              className="text-[10px] font-black uppercase tracking-[0.18em]"
+              style={{ color: "var(--muted)" }}
+            >
+              Leaderboard Arena
+            </div>
+            <h1
+              className="mt-1 text-2xl font-black tracking-tight"
+              style={{ color: "var(--text)" }}
+            >
+              Хто зараз зверху
+            </h1>
+            <div className="mt-1 text-sm" style={{ color: "var(--text-soft)" }}>
+              {game.finishedMatchesCount} зіграних матчів • {game.membersCount} гравців
+              {game.linkedTournamentName ? ` • ${game.linkedTournamentName}` : ""}
             </div>
           </div>
-        ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            <HighlightChip
+              label="HOT"
+              value={highlights.hottestPlayer?.name ?? "—"}
+              accent="warning"
+            />
+            <HighlightChip
+              label="ACCURACY"
+              value={highlights.mostAccurate?.name ?? "—"}
+              accent="success"
+            />
+            <HighlightChip
+              label="EXACT"
+              value={highlights.exactKing?.name ?? "—"}
+            />
+          </div>
+        </div>
       </section>
-    </>
+
+      {highlights.me ? (
+        <section
+          className="rounded-[22px] px-4 py-3"
+          style={{
+            background: "var(--accent-soft)",
+            border:
+              "1px solid color-mix(in srgb, var(--accent) 24%, transparent)",
+          }}
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div
+                className="text-[10px] font-black uppercase tracking-[0.16em]"
+                style={{ color: "var(--accent)" }}
+              >
+                Твоя позиція
+              </div>
+              <div
+                className="mt-1 text-lg font-black"
+                style={{ color: "var(--text)" }}
+              >
+                #{highlights.me.rank} • {highlights.me.weightedPoints} очок
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <span
+                className="inline-flex rounded-full px-3 py-1.5 text-xs font-black"
+                style={getMovementTone(highlights.me.movement)}
+              >
+                {formatMovement(highlights.me.movement)} move
+              </span>
+
+              <span
+                className="inline-flex rounded-full px-3 py-1.5 text-xs font-black"
+                style={{
+                  background: "var(--panel)",
+                  color: "var(--text-soft)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                gap {highlights.me.gapToLeader}
+              </span>
+
+              <span
+                className="inline-flex rounded-full px-3 py-1.5 text-xs font-black"
+                style={{
+                  background: "var(--success-soft)",
+                  color: "var(--success)",
+                  border:
+                    "1px solid color-mix(in srgb, var(--success) 24%, transparent)",
+                }}
+              >
+                {highlights.me.exactHits} exact
+              </span>
+            </div>
+          </div>
+        </section>
+      ) : null}
+    </div>
   );
 }

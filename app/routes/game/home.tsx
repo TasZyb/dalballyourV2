@@ -4,7 +4,7 @@ import {
   data,
   type LoaderFunctionArgs,
 } from "react-router";
-import { MatchStatus, MembershipStatus } from "@prisma/client";
+import { MatchStatus } from "@prisma/client";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 
@@ -84,7 +84,6 @@ function formatMatchDate(date: Date | string) {
   return new Intl.DateTimeFormat("uk-UA", {
     day: "2-digit",
     month: "2-digit",
-    year: "numeric",
   }).format(new Date(date));
 }
 
@@ -100,7 +99,7 @@ function getTimeUntil(date: Date | string) {
   const target = new Date(date).getTime();
   const diff = target - now;
 
-  if (diff <= 0) return "Уже стартував";
+  if (diff <= 0) return "Уже йде";
 
   const totalMinutes = Math.floor(diff / 1000 / 60);
   const days = Math.floor(totalMinutes / (60 * 24));
@@ -119,11 +118,11 @@ function getStatusLabel(status: string) {
     case "LIVE":
       return "LIVE";
     case "FINISHED":
-      return "Завершено";
+      return "Готово";
     case "CANCELED":
-      return "Скасовано";
+      return "Стоп";
     case "POSTPONED":
-      return "Перенесено";
+      return "Пауза";
     default:
       return status;
   }
@@ -140,7 +139,7 @@ function getStatusClasses(status: string) {
     case "CANCELED":
       return "border-zinc-500/20 bg-zinc-500/15 text-zinc-300";
     default:
-      return "border-white/10 bg-white/8 text-white/70";
+      return "border-[var(--border)] bg-[var(--panel)] text-[var(--text-soft)]";
   }
 }
 
@@ -446,7 +445,64 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   });
 }
 
-function TournamentBadge({
+function TeamChip({ team }: { team: TeamLike }) {
+  const logoSrc = getTeamLogoSrc(team);
+
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--panel)] px-2.5 py-2">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--border)] bg-[var(--panel-strong)]">
+        {logoSrc ? (
+          <img
+            src={logoSrc}
+            alt={team.name}
+            className="h-4.5 w-4.5 object-contain"
+            loading="lazy"
+          />
+        ) : (
+          <span className="text-[9px] font-black text-[var(--text-soft)]">
+            {team.code || team.name.slice(0, 3).toUpperCase()}
+          </span>
+        )}
+      </div>
+
+      <div className="min-w-0">
+        <div className="truncate text-sm font-black text-[var(--text)]">
+          {team.shortName || team.name}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniTile({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string | number;
+  tone?: "default" | "accent" | "success" | "warning";
+}) {
+  const toneClass =
+    tone === "accent"
+      ? "border-[color-mix(in_srgb,var(--accent)_28%,transparent)] bg-[var(--accent-soft)]"
+      : tone === "success"
+      ? "border-[color-mix(in_srgb,var(--success)_28%,transparent)] bg-[var(--success-soft)]"
+      : tone === "warning"
+      ? "border-[color-mix(in_srgb,var(--warning)_28%,transparent)] bg-[var(--warning-soft)]"
+      : "border-[var(--border)] bg-[var(--panel)]";
+
+  return (
+    <div className={`rounded-2xl border px-3 py-2 ${toneClass}`}>
+      <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--muted)]">
+        {label}
+      </div>
+      <div className="mt-0.5 text-lg font-black text-[var(--text)]">{value}</div>
+    </div>
+  );
+}
+
+function TournamentPill({
   tournament,
   label,
 }: {
@@ -458,10 +514,10 @@ function TournamentBadge({
   const logoSrc = getTournamentLogoSrc(tournament);
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-      {tournament && (
-        <div className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5">
-          <div className="flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/90">
+    <div className="flex flex-wrap items-center gap-1">
+      {tournament ? (
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--panel)] px-2 py-1 text-[10px] font-bold text-[var(--text-soft)]">
+          <div className="flex h-4 w-4 items-center justify-center overflow-hidden rounded-full bg-white/90">
             {logoSrc ? (
               <img
                 src={logoSrc}
@@ -470,77 +526,20 @@ function TournamentBadge({
                 loading="lazy"
               />
             ) : (
-              <span className="text-[8px] font-bold text-black/70">
+              <span className="text-[8px] font-black text-black/70">
                 {tournament.name.slice(0, 2).toUpperCase()}
               </span>
             )}
           </div>
-
-          <span className="max-w-[150px] truncate text-[11px] text-white/75 sm:max-w-none">
-            {tournament.name}
-          </span>
+          <span className="max-w-[110px] truncate">{tournament.name}</span>
         </div>
-      )}
+      ) : null}
 
       {label ? (
-        <div className="inline-flex items-center rounded-full border border-white/8 bg-white/[0.03] px-2 py-0.5 text-[11px] text-white/55">
+        <div className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--card-highlight)] px-2 py-1 text-[10px] text-[var(--muted)]">
           {label}
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function TeamMark({ team }: { team: TeamLike }) {
-  const logoSrc = getTeamLogoSrc(team);
-
-  return (
-    <div className="flex items-center gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 sm:h-11 sm:w-11">
-        {logoSrc ? (
-          <img
-            src={logoSrc}
-            alt={team.name}
-            className="h-6 w-6 object-contain sm:h-7 sm:w-7"
-            loading="lazy"
-          />
-        ) : (
-          <span className="text-[10px] font-bold text-white/55">
-            {team.code || team.name.slice(0, 3).toUpperCase()}
-          </span>
-        )}
-      </div>
-
-      <div className="min-w-0">
-        <div className="truncate text-sm font-semibold text-white sm:text-base">
-          {team.shortName || team.name}
-        </div>
-        <div className="truncate text-[11px] text-white/45 sm:text-xs">
-          {team.country || team.name}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SmallStatCard({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string | number;
-  hint?: string | null;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-      <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">
-        {label}
-      </div>
-      <div className="mt-2 text-2xl font-black tracking-tight text-white">
-        {value}
-      </div>
-      {hint ? <div className="mt-2 text-xs text-white/45">{hint}</div> : null}
     </div>
   );
 }
@@ -552,24 +551,44 @@ export default function GameHomePage() {
   const nextMatchLabel = nextMatch ? getTournamentSubLabel(nextMatch) : null;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
-      {nextMatch && (
-        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 sm:p-6">
-          <div className="flex flex-col gap-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="mx-auto max-w-5xl space-y-3">
+      <section className="theme-panel-strong rounded-[26px] p-3 sm:p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="truncate text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--muted)]">
+              Режим гри
+            </div>
+            <h1 className="truncate text-lg font-black text-[var(--text)] sm:text-xl">
+              {game.name}
+            </h1>
+          </div>
+
+          <Link
+            to={`/games/${game.id}/predict`}
+            className="inline-flex shrink-0 items-center rounded-2xl border border-[color-mix(in_srgb,var(--accent)_30%,transparent)] bg-[var(--accent-soft)] px-3 py-2 text-xs font-black text-[var(--accent)]"
+          >
+            Прогноз
+          </Link>
+        </div>
+      </section>
+
+      {nextMatch ? (
+        <section className="theme-panel-strong relative overflow-hidden rounded-[30px] p-3 sm:p-4">
+          <div className="absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_top,var(--hero-glow),transparent_70%)] pointer-events-none" />
+
+          <div className="relative space-y-3">
+            <div className="flex items-start justify-between gap-2">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-white/40">
-                  Найближча подія
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--muted)]">
+                  Головна гра
                 </div>
-                <h2 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">
-                  {nextMatch.status === "LIVE"
-                    ? "Матч уже в грі"
-                    : "Наступний матч, який задає тон"}
-                </h2>
+                <div className="mt-0.5 text-xl font-black text-[var(--text)] sm:text-2xl">
+                  {nextMatch.status === "LIVE" ? "Матч у розпалі" : "Час готувати прогноз"}
+                </div>
               </div>
 
               <div
-                className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${getStatusClasses(
+                className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${getStatusClasses(
                   nextMatch.status
                 )}`}
               >
@@ -577,257 +596,222 @@ export default function GameHomePage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <TournamentBadge
-                tournament={nextMatch.tournament}
-                label={nextMatchLabel}
-              />
+            <TournamentPill
+              tournament={nextMatch.tournament}
+              label={nextMatchLabel}
+            />
 
-              {nextMatch.gameMeta?.bonusLabel ? (
-                <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/65">
-                  {nextMatch.gameMeta.bonusLabel}
-                </span>
-              ) : null}
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-[24px] border border-[var(--border)] bg-[var(--card-highlight)] p-2.5 sm:p-3">
+              <TeamChip team={nextMatch.homeTeam} />
 
-              {(nextMatch.gameMeta?.customWeight ?? 1) > 1 ? (
-                <span className="inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
-                  x{nextMatch.gameMeta?.customWeight}
-                </span>
-              ) : null}
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr] lg:items-center">
-              <TeamMark team={nextMatch.homeTeam} />
-
-              <div className="flex flex-col items-center justify-center">
-                <div className="text-2xl font-black tracking-tight text-white sm:text-4xl">
-                  {nextMatch.status === "FINISHED" || nextMatch.status === "LIVE"
-                    ? `${nextMatch.homeScore ?? 0} : ${nextMatch.awayScore ?? 0}`
-                    : "vs"}
+              <div className="px-1 text-center">
+                <div className="text-2xl font-black tracking-tight text-[var(--text)] sm:text-3xl">
+                  {nextMatch.status === "LIVE" || nextMatch.status === "FINISHED"
+                    ? `${nextMatch.homeScore ?? 0}:${nextMatch.awayScore ?? 0}`
+                    : "VS"}
                 </div>
-
-                <div className="mt-2 text-sm text-white/45">
-                  {formatMatchDate(nextMatch.startTime)} •{" "}
-                  {formatMatchTime(nextMatch.startTime)}
+                <div className="mt-1 text-[10px] text-[var(--muted)]">
+                  {formatMatchDate(nextMatch.startTime)} • {formatMatchTime(nextMatch.startTime)}
                 </div>
-
-                {nextMatch.status === "SCHEDULED" && (
-                  <div className="mt-1 text-sm font-medium text-white/60">
-                    Початок через {getTimeUntil(nextMatch.startTime)}
+                {nextMatch.status === "SCHEDULED" ? (
+                  <div className="mt-1 text-[11px] font-bold text-[var(--accent)]">
+                    через {getTimeUntil(nextMatch.startTime)}
                   </div>
-                )}
+                ) : null}
               </div>
 
-              <div className="lg:justify-self-end">
-                <TeamMark team={nextMatch.awayTeam} />
-              </div>
+              <TeamChip team={nextMatch.awayTeam} />
             </div>
 
-            <div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <MiniTile
+                label="Статус"
+                value={getStatusLabel(nextMatch.status)}
+                tone={nextMatch.status === "LIVE" ? "warning" : "default"}
+              />
+              <MiniTile
+                label="Дата"
+                value={formatMatchDate(nextMatch.startTime)}
+              />
+              <MiniTile
+                label="Час"
+                value={formatMatchTime(nextMatch.startTime)}
+              />
+              <MiniTile
+                label="Бонус"
+                value={
+                  (nextMatch.gameMeta?.customWeight ?? 1) > 1
+                    ? `x${nextMatch.gameMeta?.customWeight}`
+                    : nextMatch.gameMeta?.bonusLabel || "Нема"
+                }
+                tone={(nextMatch.gameMeta?.customWeight ?? 1) > 1 ? "accent" : "default"}
+              />
+            </div>
+
+            <div className="flex gap-2">
               <Link
                 to={`/games/${game.id}/matches/${nextMatch.id}`}
-                className="inline-flex items-center justify-center rounded-2xl bg-white px-4 py-3 text-sm font-bold text-black transition hover:opacity-90"
+                className="inline-flex items-center justify-center rounded-2xl bg-[var(--text)] px-4 py-2.5 text-sm font-black text-[var(--bg)]"
               >
-                Відкрити матч
+                В матч
+              </Link>
+
+              <Link
+                to={`/games/${game.id}/predict`}
+                className="inline-flex items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--panel)] px-4 py-2.5 text-sm font-black text-[var(--text)]"
+              >
+                Мої прогнози
               </Link>
             </div>
           </div>
         </section>
-      )}
+      ) : null}
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-bold text-white sm:text-xl">
-            Турніри гри
+      <section className="grid gap-3 xl:grid-cols-[1fr_0.92fr]">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-black uppercase tracking-[0.14em] text-[var(--text-soft)]">
+              Моя зона
+            </h2>
+          </div>
+
+          {myHighlights ? (
+            <div className="grid grid-cols-2 gap-2">
+              <MiniTile label="Стрік" value={myHighlights.currentGoodStreak} tone="accent" />
+              <MiniTile label="Точні" value={myHighlights.exactHits} tone="success" />
+              <MiniTile label="Вгадав" value={myHighlights.correctResults} />
+              <MiniTile
+                label="Ще треба"
+                value={myHighlights.openMatchesWithoutPrediction}
+                tone={myHighlights.openMatchesWithoutPrediction > 0 ? "warning" : "success"}
+              />
+
+              <div className="col-span-2 theme-panel rounded-2xl px-3 py-2.5">
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--muted)]">
+                  Мій найкращий турнір
+                </div>
+                <div className="mt-1 truncate text-base font-black text-[var(--text)]">
+                  {myHighlights.bestTournamentName ?? "Ще формується"}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="theme-panel rounded-2xl px-3 py-3 text-sm text-[var(--text-soft)]">
+              Коли увійдеш у гру, тут будуть твої цифри.
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <h2 className="text-sm font-black uppercase tracking-[0.14em] text-[var(--text-soft)]">
+            Наступна місія
           </h2>
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/55">
-            {tournamentsOverview.length}
-          </span>
+
+          {myNextChallenge ? (
+            <Link
+              to={`/games/${game.id}/matches/${myNextChallenge.matchId}`}
+              className="theme-panel-strong block rounded-[26px] p-3 transition hover:translate-y-[-1px]"
+            >
+              <div className="space-y-2">
+                <TournamentPill
+                  tournament={myNextChallenge.tournament}
+                  label={getTournamentSubLabel(myNextChallenge)}
+                />
+
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--card-highlight)] px-2.5 py-2">
+                  <div className="truncate text-sm font-black text-[var(--text)]">
+                    {myNextChallenge.homeTeam.shortName || myNextChallenge.homeTeam.name}
+                  </div>
+                  <div className="text-xs font-black text-[var(--accent)]">VS</div>
+                  <div className="truncate text-right text-sm font-black text-[var(--text)]">
+                    {myNextChallenge.awayTeam.shortName || myNextChallenge.awayTeam.name}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-[11px] text-[var(--text-soft)]">
+                  <span>{formatMatchDate(myNextChallenge.startTime)}</span>
+                  <span>•</span>
+                  <span>{formatMatchTime(myNextChallenge.startTime)}</span>
+                  <span>•</span>
+                  <span>через {getTimeUntil(myNextChallenge.startTime)}</span>
+                </div>
+
+                <div className="text-sm font-bold text-[var(--text)]">
+                  Тут ще нема твого прогнозу.
+                </div>
+              </div>
+            </Link>
+          ) : (
+            <div className="theme-panel rounded-2xl px-3 py-3 text-sm text-[var(--text-soft)]">
+              Усе ок. Новий виклик скоро з’явиться.
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-black uppercase tracking-[0.14em] text-[var(--text-soft)]">
+            Турніри
+          </h2>
+          <Link
+            to={`/games/${game.id}/matches`}
+            className="text-xs font-black text-[var(--accent)]"
+          >
+            Усі матчі
+          </Link>
         </div>
 
         {tournamentsOverview.length > 0 ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {tournamentsOverview.map((tournament) => {
               const logoSrc = getTournamentLogoSrc(tournament);
 
               return (
                 <div
                   key={tournament.id}
-                  className="rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+                  className="theme-panel rounded-2xl p-2.5"
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/90">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--border)] bg-[var(--panel-strong)]">
                       {logoSrc ? (
                         <img
                           src={logoSrc}
                           alt={tournament.name}
-                          className="h-6 w-6 object-contain"
+                          className="h-4.5 w-4.5 object-contain"
                           loading="lazy"
                         />
                       ) : (
-                        <span className="text-[10px] font-bold text-black/70">
+                        <span className="text-[8px] font-black text-[var(--text-soft)]">
                           {tournament.name.slice(0, 2).toUpperCase()}
                         </span>
                       )}
                     </div>
 
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-bold text-white">
+                      <div className="truncate text-sm font-black text-[var(--text)]">
                         {tournament.name}
                       </div>
-                      <div className="mt-1 text-xs text-white/45">
-                        {tournament.country || "Міжнародний турнір"}
+                      <div className="text-[10px] text-[var(--muted)]">
+                        {tournament.country || "Турнір"}
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-3 gap-2">
-                    <div className="rounded-xl border border-white/8 bg-white/[0.03] p-3">
-                      <div className="text-[10px] uppercase tracking-[0.14em] text-white/35">
-                        Усього
-                      </div>
-                      <div className="mt-1 text-lg font-black text-white">
-                        {tournament.totalMatches}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-white/8 bg-white/[0.03] p-3">
-                      <div className="text-[10px] uppercase tracking-[0.14em] text-white/35">
-                        LIVE
-                      </div>
-                      <div className="mt-1 text-lg font-black text-red-200">
-                        {tournament.liveMatches}
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-white/8 bg-white/[0.03] p-3">
-                      <div className="text-[10px] uppercase tracking-[0.14em] text-white/35">
-                        Скоро
-                      </div>
-                      <div className="mt-1 text-lg font-black text-white">
-                        {tournament.upcomingMatches}
-                      </div>
-                    </div>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    <MiniTile label="Усі" value={tournament.totalMatches} />
+                    <MiniTile label="LIVE" value={tournament.liveMatches} tone="warning" />
+                    <MiniTile label="Скоро" value={tournament.upcomingMatches} tone="accent" />
                   </div>
                 </div>
               );
             })}
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-sm text-white/45">
-            Для цієї гри ще не прив’язані турніри.
+          <div className="theme-panel rounded-2xl px-3 py-3 text-sm text-[var(--text-soft)]">
+            Тут поки пусто.
           </div>
         )}
-      </section>
-
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="space-y-3">
-          <h2 className="text-lg font-bold text-white sm:text-xl">
-            Мій вайб у грі
-          </h2>
-
-          {myHighlights ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <SmallStatCard
-                label="Поточний стрік"
-                value={myHighlights.currentGoodStreak}
-                hint="Скільки поспіль прогнозів дали правильний результат"
-              />
-              <SmallStatCard
-                label="Точні рахунки"
-                value={myHighlights.exactHits}
-                hint="Exact hits за весь час у цій грі"
-              />
-              <SmallStatCard
-                label="Влучив у результат"
-                value={myHighlights.correctResults}
-                hint="Усі прогнози, де результат матчу був вгаданий"
-              />
-              <SmallStatCard
-                label="Без прогнозу"
-                value={myHighlights.openMatchesWithoutPrediction}
-                hint="Скільки відкритих матчів ще чекають твого прогнозу"
-              />
-              <div className="sm:col-span-2 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                <div className="text-[11px] uppercase tracking-[0.16em] text-white/40">
-                  Найкращий турнір для мене
-                </div>
-                <div className="mt-2 text-xl font-black tracking-tight text-white">
-                  {myHighlights.bestTournamentName ?? "Ще формується"}
-                </div>
-                <div className="mt-2 text-sm text-white/45">
-                  Турнір, у якому ти наразі набрав найбільше вагомих очок.
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-sm text-white/45">
-              Увійди в гру як учасник, і тут з’являться твої особисті досягнення.
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-3">
-          <h2 className="text-lg font-bold text-white sm:text-xl">
-            Мій наступний виклик
-          </h2>
-
-          {myNextChallenge ? (
-            <Link
-              to={`/games/${game.id}/matches/${myNextChallenge.matchId}`}
-              className="block rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5 transition hover:border-white/20 hover:bg-white/[0.05]"
-            >
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <TournamentBadge
-                    tournament={myNextChallenge.tournament}
-                    label={getTournamentSubLabel(myNextChallenge)}
-                  />
-
-                  {myNextChallenge.bonusLabel ? (
-                    <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/65">
-                      {myNextChallenge.bonusLabel}
-                    </span>
-                  ) : null}
-
-                  {(myNextChallenge.customWeight ?? 1) > 1 ? (
-                    <span className="inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
-                      x{myNextChallenge.customWeight}
-                    </span>
-                  ) : null}
-                </div>
-
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                  <div className="truncate text-sm font-semibold text-white">
-                    {myNextChallenge.homeTeam.shortName || myNextChallenge.homeTeam.name}
-                  </div>
-
-                  <div className="text-center text-base font-black text-white">
-                    vs
-                  </div>
-
-                  <div className="truncate text-right text-sm font-semibold text-white">
-                    {myNextChallenge.awayTeam.shortName || myNextChallenge.awayTeam.name}
-                  </div>
-                </div>
-
-                <div className="text-sm text-white/50">
-                  {formatMatchDate(myNextChallenge.startTime)} •{" "}
-                  {formatMatchTime(myNextChallenge.startTime)} • через{" "}
-                  {getTimeUntil(myNextChallenge.startTime)}
-                </div>
-
-                <div className="text-sm text-white/65">
-                  Це найближчий важливий матч, на який у тебе ще немає прогнозу.
-                </div>
-              </div>
-            </Link>
-          ) : (
-            <div className="rounded-[1.75rem] border border-dashed border-white/10 bg-white/[0.02] p-5 text-sm text-white/45">
-              Або всі найближчі прогнози вже подані, або новий виклик з’явиться зовсім скоро.
-            </div>
-          )}
-        </div>
       </section>
     </div>
   );

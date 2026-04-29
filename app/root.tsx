@@ -5,9 +5,12 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  data,
+  useRouteLoaderData,
 } from "react-router";
 
 import type { Route } from "./+types/root";
+import { getThemeFromRequest } from "~/lib/theme.server";
 import "./app.css";
 
 export const links: Route.LinksFunction = () => [
@@ -23,28 +26,28 @@ export const links: Route.LinksFunction = () => [
   },
 ];
 
-const themeInitScript = `
-(function () {
-  try {
-    var savedTheme = localStorage.getItem("site-theme");
-    var theme = savedTheme || "ucl";
-    document.documentElement.setAttribute("data-theme", theme);
-  } catch (e) {
-    document.documentElement.setAttribute("data-theme", "ucl");
-  }
-})();
-`;
+export async function loader({ request }: Route.LoaderArgs) {
+  const theme = await getThemeFromRequest(request);
+
+  return data({
+    theme,
+  });
+}
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const { theme } = useRouteLoaderData<typeof loader>("root") ?? {
+    theme: "ucl",
+  };
+
   return (
-    <html lang="en" data-theme="ucl">
+    <html lang="en" data-theme={theme}>
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
-        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
+
       <body className="theme-page">
         {children}
         <ScrollRestoration />
@@ -81,7 +84,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
         <p className="theme-text-soft mt-2">{details}</p>
 
         {stack && (
-          <pre className="mt-4 w-full overflow-x-auto rounded-2xl border p-4 text-sm">
+          <pre className="mt-4 w-full overflow-x-auto rounded-2xl border border-[var(--border)] p-4 text-sm">
             <code>{stack}</code>
           </pre>
         )}

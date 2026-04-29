@@ -59,6 +59,20 @@ export default [
 
     route("settings", "routes/career/settings.tsx"),
   ]),
+  route("x9p_admin_47taras/unlock", "routes/super-admin/unlock.tsx"),
+  route("x9p_admin_47taras", "routes/super-admin/layout.tsx", [
+    
+    index("routes/super-admin/index.tsx"),
+    route("games", "routes/super-admin/games.tsx"),
+    route("games/:gameId", "routes/super-admin/game-details.tsx"),
+    route("predictions", "routes/super-admin/predictions.tsx"),
+    route("players", "routes/super-admin/players.tsx"),
+    route("users", "routes/super-admin/users.tsx"),
+    route("tournaments", "routes/super-admin/tournaments.tsx"),
+    route("rounds", "routes/super-admin/rounds.tsx"),
+    route("matches", "routes/super-admin/matches.tsx"),
+    route("danger-zone", "routes/super-admin/danger-zone.tsx"),
+  ]),
 
   route("admin_taras", "routes/admin-predictions.tsx"),
 ] satisfies RouteConfig;

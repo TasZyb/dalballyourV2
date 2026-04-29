@@ -4,6 +4,7 @@ import {
   data,
   type LoaderFunctionArgs,
 } from "react-router";
+import { useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 
@@ -41,6 +42,8 @@ type MatchItem = {
   } | null;
 };
 
+type SectionTone = "live" | "upcoming" | "done" | "warn" | "muted";
+
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const currentUser = await getCurrentUser(request);
   const gameId = params.gameId;
@@ -51,71 +54,102 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const gameMatches = await prisma.gameMatch.findMany({
     where: { gameId },
-    include: {
+    select: {
       match: {
-        include: {
-          tournament: true,
-          round: true,
-          homeTeam: true,
-          awayTeam: true,
+        select: {
+          id: true,
+          status: true,
+          startTime: true,
+          homeScore: true,
+          awayScore: true,
+          stageLabel: true,
+          matchdayLabel: true,
+          tournament: {
+            select: {
+              id: true,
+              name: true,
+              logo: true,
+              slug: true,
+              country: true,
+            },
+          },
+          round: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          homeTeam: {
+            select: {
+              id: true,
+              name: true,
+              shortName: true,
+              logo: true,
+              code: true,
+            },
+          },
+          awayTeam: {
+            select: {
+              id: true,
+              name: true,
+              shortName: true,
+              logo: true,
+              code: true,
+            },
+          },
         },
       },
     },
     orderBy: {
       match: {
-        startTime: "desc",
+        startTime: "asc",
       },
     },
   });
 
-  const matches = gameMatches.map((item) => item.match);
-
-  const upcomingMatches = matches
-    .filter((match) => match.status === "SCHEDULED")
-    .sort(
-      (a, b) =>
-        new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-    );
+  const matches = gameMatches.map((item) => ({
+    ...item.match,
+    homeTeam: {
+      ...item.match.homeTeam,
+      tla: item.match.homeTeam.code,
+    },
+    awayTeam: {
+      ...item.match.awayTeam,
+      tla: item.match.awayTeam.code,
+    },
+  }));
 
   const liveMatches = matches
     .filter((match) => match.status === "LIVE")
-    .sort(
-      (a, b) =>
-        new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-    );
+    .sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime));
+
+  const upcomingMatches = matches
+    .filter((match) => match.status === "SCHEDULED")
+    .sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime));
 
   const finishedMatches = matches
     .filter((match) => match.status === "FINISHED")
-    .sort(
-      (a, b) =>
-        new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
-    );
+    .sort((a, b) => +new Date(b.startTime) - +new Date(a.startTime));
 
   const canceledMatches = matches
     .filter((match) => match.status === "CANCELED")
-    .sort(
-      (a, b) =>
-        new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
-    );
+    .sort((a, b) => +new Date(b.startTime) - +new Date(a.startTime));
 
   const postponedMatches = matches
     .filter((match) => match.status === "POSTPONED")
-    .sort(
-      (a, b) =>
-        new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-    );
+    .sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime));
 
   return data({
     currentUser,
     gameId,
-    upcomingMatches,
     liveMatches,
+    upcomingMatches,
     finishedMatches,
     canceledMatches,
     postponedMatches,
     counts: {
-      upcoming: upcomingMatches.length,
       live: liveMatches.length,
+      upcoming: upcomingMatches.length,
       finished: finishedMatches.length,
       canceled: canceledMatches.length,
       postponed: postponedMatches.length,
@@ -145,283 +179,399 @@ function getStatusLabel(status: string) {
     case "LIVE":
       return "LIVE";
     case "FINISHED":
-      return "Готово";
+      return "Завершено";
     case "CANCELED":
-      return "Стоп";
+      return "Скасовано";
     case "POSTPONED":
-      return "Пауза";
+      return "Перенесено";
     default:
       return status;
-  }
-}
-
-function getStatusDotClass(status: string) {
-  switch (status) {
-    case "LIVE":
-      return "bg-red-400";
-    case "FINISHED":
-      return "bg-emerald-400";
-    case "POSTPONED":
-      return "bg-amber-400";
-    case "CANCELED":
-      return "bg-zinc-400";
-    default:
-      return "bg-white/40";
   }
 }
 
 function getTeamLogoSrc(team: TeamLike) {
   if (team.logo) return team.logo;
   if (team.shortName) return `/teams/${team.shortName}.svg`;
+  if (team.tla) return `/teams/${team.tla}.svg`;
   return null;
 }
 
 function getTournamentLogoSrc(tournament?: TournamentLike | null) {
-  if (!tournament) return null;
-  if (tournament.logo) return `/teams/${tournament.logo}.svg`;
-  return null;
+  if (!tournament?.logo) return null;
+  return tournament.logo.startsWith("/") ? tournament.logo : `/teams/${tournament.logo}.svg`;
 }
 
 function getTournamentSubLabel(match: MatchItem) {
   return match.round?.name || match.stageLabel || match.matchdayLabel || null;
 }
 
-function StatPill({
-  icon,
-  value,
-  tone = "default",
-}: {
-  icon: React.ReactNode;
-  value: number;
-  tone?: "default" | "live" | "done" | "warn" | "muted";
-}) {
-  const tones = {
-    default: "border-white/10 bg-white/5 text-white/80",
-    live: "border-red-500/20 bg-red-500/10 text-red-200",
-    done: "border-emerald-500/20 bg-emerald-500/10 text-emerald-200",
-    warn: "border-amber-500/20 bg-amber-500/10 text-amber-200",
-    muted: "border-zinc-500/20 bg-zinc-500/10 text-zinc-300",
-  };
+function getSectionStyle(tone: SectionTone) {
+  switch (tone) {
+    case "live":
+      return {
+        panel: "border-red-400/20 bg-red-500/[0.045]",
+        title: "text-red-300",
+        badge: "bg-red-500/15 text-red-200 ring-red-400/20",
+        line: "from-red-400/50",
+        row: "border-red-400/15 hover:bg-red-500/[0.08]",
+        score: "text-red-200",
+      };
+    case "upcoming":
+      return {
+        panel: "border-[var(--accent)]/20 bg-[var(--accent-soft)]/40",
+        title: "text-[var(--accent)]",
+        badge: "bg-[var(--accent-soft)] text-[var(--accent)] ring-[var(--accent)]/20",
+        line: "from-[var(--accent)]/50",
+        row: "border-[var(--accent)]/15 hover:bg-[var(--accent-soft)]",
+        score: "text-[var(--text)]",
+      };
+    case "done":
+      return {
+        panel: "border-emerald-400/15 bg-emerald-500/[0.035]",
+        title: "text-emerald-300",
+        badge: "bg-emerald-500/10 text-emerald-200 ring-emerald-400/20",
+        line: "from-emerald-400/40",
+        row: "border-emerald-400/10 opacity-85 hover:opacity-100 hover:bg-emerald-500/[0.05]",
+        score: "text-emerald-200",
+      };
+    case "warn":
+      return {
+        panel: "border-amber-400/15 bg-amber-500/[0.04]",
+        title: "text-amber-300",
+        badge: "bg-amber-500/10 text-amber-200 ring-amber-400/20",
+        line: "from-amber-400/40",
+        row: "border-amber-400/10 hover:bg-amber-500/[0.06]",
+        score: "text-amber-200",
+      };
+    case "muted":
+      return {
+        panel: "border-zinc-400/10 bg-zinc-500/[0.035]",
+        title: "text-zinc-400",
+        badge: "bg-zinc-500/10 text-zinc-300 ring-zinc-400/15",
+        line: "from-zinc-400/25",
+        row: "border-zinc-400/10 opacity-70 hover:opacity-90 hover:bg-zinc-500/[0.05]",
+        score: "text-zinc-300",
+      };
+  }
+}
+
+function TeamLogo({ team }: { team: TeamLike }) {
+  const logoSrc = getTeamLogoSrc(team);
 
   return (
-    <div
-      className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold ${tones[tone]}`}
-    >
-      <span className="flex h-5 w-5 items-center justify-center">{icon}</span>
-      <span>{value}</span>
+    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--border)] bg-[var(--panel)]">
+      {logoSrc ? (
+        <img
+          src={logoSrc}
+          alt={team.name}
+          className="h-5 w-5 object-contain"
+          loading="lazy"
+          decoding="async"
+        />
+      ) : (
+        <span className="text-[9px] font-black text-[var(--text-soft)]">
+          {(team.tla || team.shortName || team.name).slice(0, 3).toUpperCase()}
+        </span>
+      )}
     </div>
   );
 }
 
-function NavIconLink({
-  href,
-  label,
-  icon,
-}: {
-  href: string;
-  label: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <a
-      href={href}
-      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/75 transition hover:bg-white/10 hover:text-white"
-    >
-      <span className="flex h-4 w-4 items-center justify-center">{icon}</span>
-      <span className="hidden sm:inline">{label}</span>
-    </a>
-  );
-}
-
-function TeamCell({
+function TeamLine({
   team,
   align = "left",
 }: {
   team: TeamLike;
   align?: "left" | "right";
 }) {
-  const logoSrc = getTeamLogoSrc(team);
-
   return (
     <div
-      className={`flex min-w-0 items-center gap-2 ${
-        align === "right" ? "justify-end text-right" : ""
-      }`}
+      className={[
+        "flex min-w-0 items-center gap-2",
+        align === "right" ? "justify-end text-right" : "",
+      ].join(" ")}
     >
-      {align === "right" && (
-        <div className="min-w-0">
-          <div className="truncate text-[13px] font-semibold text-white sm:text-sm">
-            {team.shortName || team.name}
-          </div>
-        </div>
-      )}
+      {align === "left" && <TeamLogo team={team} />}
 
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 sm:h-10 sm:w-10">
-        {logoSrc ? (
-          <img
-            src={logoSrc}
-            alt={team.name}
-            className="h-5 w-5 object-contain sm:h-6 sm:w-6"
-            loading="lazy"
-          />
-        ) : (
-          <span className="text-[9px] font-bold text-white/55 sm:text-[10px]">
-            {team.tla || team.name.slice(0, 3).toUpperCase()}
-          </span>
-        )}
+      <div className="min-w-0">
+        <div className="truncate text-sm font-black text-[var(--text)]">
+          {team.shortName || team.name}
+        </div>
+        <div className="truncate text-[10px] text-[var(--muted)]">
+          {team.name}
+        </div>
       </div>
 
-      {align === "left" && (
-        <div className="min-w-0">
-          <div className="truncate text-[13px] font-semibold text-white sm:text-sm">
-            {team.shortName || team.name}
-          </div>
-        </div>
-      )}
+      {align === "right" && <TeamLogo team={team} />}
     </div>
   );
 }
 
-function TournamentBadge({
-  tournament,
-  label,
-}: {
-  tournament?: TournamentLike | null;
-  label?: string | null;
-}) {
-  if (!tournament && !label) return null;
-
-  const logoSrc = getTournamentLogoSrc(tournament);
+function MatchMeta({ match }: { match: MatchItem }) {
+  const label = getTournamentSubLabel(match);
+  const logoSrc = getTournamentLogoSrc(match.tournament);
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-      {tournament && (
-        <div className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2 py-1">
-          <div className="flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/90">
+    <div className="flex min-w-0 items-center gap-2 text-[10px] text-[var(--muted)]">
+      {match.tournament ? (
+        <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/90">
             {logoSrc ? (
               <img
                 src={logoSrc}
-                alt={tournament.name}
-                className="h-3 w-3 object-contain"
+                alt={match.tournament.name}
+                className="h-3.5 w-3.5 object-contain"
                 loading="lazy"
+                decoding="async"
               />
             ) : (
-              <span className="text-[8px] font-bold text-black/70">
-                {tournament.name.slice(0, 2).toUpperCase()}
+              <span className="text-[8px] font-black text-black/70">
+                {match.tournament.name.slice(0, 2).toUpperCase()}
               </span>
             )}
           </div>
 
-          <span className="max-w-[120px] truncate text-[11px] text-white/70 sm:max-w-none">
-            {tournament.name}
-          </span>
-        </div>
-      )}
-
-      {label ? (
-        <div className="inline-flex items-center rounded-full border border-white/8 bg-white/[0.03] px-2 py-1 text-[11px] text-white/50">
-          {label}
+          <span className="max-w-[140px] truncate">{match.tournament.name}</span>
         </div>
       ) : null}
+
+      {label ? <span className="truncate opacity-70">• {label}</span> : null}
     </div>
+  );
+}
+
+function StatusBadge({
+  status,
+  tone,
+}: {
+  status: string;
+  tone: SectionTone;
+}) {
+  const style = getSectionStyle(tone);
+
+  return (
+    <span
+      className={[
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ring-1",
+        style.badge,
+      ].join(" ")}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {getStatusLabel(status)}
+    </span>
   );
 }
 
 function MatchRow({
   match,
   gameId,
+  tone,
+  featured = false,
 }: {
   match: MatchItem;
   gameId: string;
+  tone: SectionTone;
+  featured?: boolean;
 }) {
-  const isFinished = match.status === "FINISHED";
-  const isLive = match.status === "LIVE";
-  const tournamentSubLabel = getTournamentSubLabel(match);
+  const style = getSectionStyle(tone);
+  const hasScore = match.status === "FINISHED" || match.status === "LIVE";
 
   return (
     <Link
       to={`/games/${gameId}/matches/${match.id}`}
-      className="block rounded-3xl border border-white/8 bg-white/[0.04] px-3 py-3 transition hover:border-white/15 hover:bg-white/[0.07]"
+      className={[
+        "block rounded-3xl border p-3 transition sm:p-4",
+        style.row,
+        featured ? "shadow-lg shadow-black/10" : "",
+      ].join(" ")}
     >
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/45">
-          <div className="min-w-0">
-            <TournamentBadge
-              tournament={match.tournament}
-              label={tournamentSubLabel}
-            />
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <MatchMeta match={match} />
+
+        <div className="shrink-0 text-right text-[10px] font-bold text-[var(--muted)]">
+          {formatMatchDate(match.startTime)} · {formatMatchTime(match.startTime)}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+        <TeamLine team={match.homeTeam} />
+
+        <div className="flex min-w-[82px] flex-col items-center">
+          <div
+            className={[
+              "font-black tracking-tight",
+              style.score,
+              featured ? "text-3xl sm:text-4xl" : "text-2xl",
+            ].join(" ")}
+          >
+            {hasScore ? `${match.homeScore ?? 0}:${match.awayScore ?? 0}` : "VS"}
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
-            <span>{formatMatchDate(match.startTime)}</span>
-            <span className="text-white/20">•</span>
-            <span>{formatMatchTime(match.startTime)}</span>
+          <div className="mt-1">
+            <StatusBadge status={match.status} tone={tone} />
           </div>
         </div>
 
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-          <TeamCell team={match.homeTeam} align="left" />
-
-          <div className="flex min-w-[68px] flex-col items-center justify-center">
-            <div className="text-lg font-black tracking-tight text-white sm:text-xl">
-              {isFinished || isLive
-                ? `${match.homeScore ?? 0}:${match.awayScore ?? 0}`
-                : "vs"}
-            </div>
-
-            <div className="mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-white/55">
-              <span
-                className={`h-2 w-2 rounded-full ${getStatusDotClass(
-                  match.status
-                )}`}
-              />
-              <span>{getStatusLabel(match.status)}</span>
-            </div>
-          </div>
-
-          <TeamCell team={match.awayTeam} align="right" />
-        </div>
+        <TeamLine team={match.awayTeam} align="right" />
       </div>
     </Link>
   );
 }
 
-function MatchesGroup({
+function SectionIcon({ tone }: { tone: SectionTone }) {
+  if (tone === "live") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+        <circle cx="12" cy="12" r="5" />
+      </svg>
+    );
+  }
+
+  if (tone === "upcoming") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2">
+        <circle cx="12" cy="12" r="8" />
+        <path d="M12 8v4l3 2" />
+      </svg>
+    );
+  }
+
+  if (tone === "done") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2">
+        <path d="M5 12l4 4L19 6" />
+      </svg>
+    );
+  }
+
+  if (tone === "warn") {
+    return (
+      <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2">
+        <path d="M12 7v5l3 2" />
+        <circle cx="12" cy="12" r="8" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2">
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
+
+function MatchSection({
   id,
   title,
-  count,
+  subtitle,
+  tone,
   matches,
-  emptyText,
   gameId,
+  emptyText,
+  initialVisible = 4,
 }: {
   id: string;
   title: string;
-  count: number;
+  subtitle: string;
+  tone: SectionTone;
   matches: MatchItem[];
-  emptyText: string;
   gameId: string;
+  emptyText: string;
+  initialVisible?: number;
 }) {
+  const [visible, setVisible] = useState(initialVisible);
+  const style = getSectionStyle(tone);
+  const visibleMatches = matches.slice(0, visible);
+  const canShowMore = visible < matches.length;
+
   return (
-    <section id={id} className="space-y-2.5 scroll-mt-24">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-bold text-white sm:text-lg">{title}</h2>
-        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/55">
-          {count}
-        </span>
+    <section
+      id={id}
+      className={[
+        "scroll-mt-24 rounded-[2rem] border p-4 sm:p-5",
+        style.panel,
+      ].join(" ")}
+    >
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className={["mt-0.5", style.title].join(" ")}>
+            <SectionIcon tone={tone} />
+          </div>
+
+          <div>
+            <h2 className={["text-lg font-black", style.title].join(" ")}>
+              {title}
+            </h2>
+            <p className="mt-0.5 text-sm text-[var(--text-soft)]">{subtitle}</p>
+          </div>
+        </div>
+
+        <div
+          className={[
+            "rounded-full px-3 py-1 text-xs font-black ring-1",
+            style.badge,
+          ].join(" ")}
+        >
+          {matches.length}
+        </div>
       </div>
 
+      <div className={["mb-4 h-px bg-gradient-to-r to-transparent", style.line].join(" ")} />
+
       {matches.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-5 text-sm text-white/40">
+        <div className="rounded-3xl border border-dashed border-[var(--border)] p-5 text-sm text-[var(--text-soft)]">
           {emptyText}
         </div>
       ) : (
-        <div className="space-y-2">
-          {matches.map((match) => (
-            <MatchRow key={match.id} match={match} gameId={gameId} />
-          ))}
-        </div>
+        <>
+          <div className="space-y-3">
+            {visibleMatches.map((match) => (
+              <MatchRow key={match.id} match={match} gameId={gameId} tone={tone} />
+            ))}
+          </div>
+
+          {canShowMore ? (
+            <button
+              type="button"
+              onClick={() => setVisible((prev) => prev + 4)}
+              className={[
+                "mt-4 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-[0.14em] transition hover:bg-[var(--panel-strong)]",
+                style.title,
+              ].join(" ")}
+            >
+              Показати ще
+            </button>
+          ) : null}
+        </>
       )}
     </section>
+  );
+}
+
+function TinyJump({
+  href,
+  label,
+  count,
+  tone,
+}: {
+  href: string;
+  label: string;
+  count: number;
+  tone: SectionTone;
+}) {
+  const style = getSectionStyle(tone);
+
+  return (
+    <a
+      href={href}
+      className={[
+        "inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-black uppercase tracking-[0.12em] ring-1 transition hover:bg-[var(--panel-strong)]",
+        style.badge,
+      ].join(" ")}
+    >
+      <span>{label}</span>
+      <span className="opacity-70">{count}</span>
+    </a>
   );
 }
 
@@ -436,224 +586,148 @@ export default function MatchesPage() {
     counts,
   } = useLoaderData<typeof loader>();
 
+  const heroMatch = liveMatches[0] || upcomingMatches[0] || null;
+
+  const heroTone: SectionTone =
+    heroMatch?.status === "LIVE" ? "live" : "upcoming";
+
+  const upcomingWithoutHero =
+    heroMatch?.status === "SCHEDULED"
+      ? upcomingMatches.filter((match) => match.id !== heroMatch.id)
+      : upcomingMatches;
+
+  const liveWithoutHero =
+    heroMatch?.status === "LIVE"
+      ? liveMatches.filter((match) => match.id !== heroMatch.id)
+      : liveMatches;
+
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <section className="space-y-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-black tracking-tight text-white">
+    <div className="mx-auto max-w-5xl space-y-5">
+      <section className="theme-panel rounded-[2rem] p-5 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="theme-muted text-xs font-black uppercase tracking-[0.25em]">
+              Game matches
+            </div>
+
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-[var(--text)]">
               Матчі
             </h1>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/45">
-              <span>{counts.total} всього</span>
-              <span className="text-white/20">•</span>
-              <span>{counts.live} live</span>
-            </div>
+
+            <p className="mt-1 text-sm text-[var(--text-soft)]">
+              Розділено по статусах, щоб не змішувати майбутні, live та завершені матчі.
+            </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <NavIconLink
+            <TinyJump href="#live" label="LIVE" count={counts.live} tone="live" />
+            <TinyJump
               href="#upcoming"
               label="Скоро"
-              icon={
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4 fill-none stroke-current stroke-2"
-                >
-                  <circle cx="12" cy="12" r="8" />
-                  <path d="M12 8v5l3 2" />
-                </svg>
-              }
+              count={counts.upcoming}
+              tone="upcoming"
             />
-
-            <NavIconLink
-              href="#live"
-              label="Live"
-              icon={
-                <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current">
-                  <circle cx="12" cy="12" r="5" />
-                </svg>
-              }
-            />
-
-            <NavIconLink
+            <TinyJump
               href="#finished"
               label="Готово"
-              icon={
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4 fill-none stroke-current stroke-2"
-                >
-                  <path d="M5 12l4 4L19 6" />
-                </svg>
-              }
+              count={counts.finished}
+              tone="done"
             />
-
-            {counts.postponed > 0 && (
-              <NavIconLink
+            {counts.postponed > 0 ? (
+              <TinyJump
                 href="#postponed"
                 label="Пауза"
-                icon={
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4 fill-none stroke-current stroke-2"
-                  >
-                    <circle cx="12" cy="12" r="8" />
-                    <path d="M12 8v5l3 2" />
-                  </svg>
-                }
+                count={counts.postponed}
+                tone="warn"
               />
-            )}
-
-            {counts.canceled > 0 && (
-              <NavIconLink
+            ) : null}
+            {counts.canceled > 0 ? (
+              <TinyJump
                 href="#canceled"
                 label="Стоп"
-                icon={
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4 fill-none stroke-current stroke-2"
-                  >
-                    <path d="M6 6l12 12M18 6L6 18" />
-                  </svg>
-                }
+                count={counts.canceled}
+                tone="muted"
               />
-            )}
+            ) : null}
           </div>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <StatPill
-            value={counts.total}
-            icon={
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4 fill-none stroke-current stroke-2"
-              >
-                <circle cx="12" cy="12" r="8" />
-                <path d="M9 9l3-2 3 2v3l-3 2-3-2z" />
-              </svg>
-            }
-          />
-
-          <StatPill
-            value={counts.upcoming}
-            tone="default"
-            icon={
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4 fill-none stroke-current stroke-2"
-              >
-                <circle cx="12" cy="12" r="8" />
-                <path d="M12 8v5l3 2" />
-              </svg>
-            }
-          />
-
-          <StatPill
-            value={counts.live}
-            tone="live"
-            icon={
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current">
-                <circle cx="12" cy="12" r="6" />
-              </svg>
-            }
-          />
-
-          <StatPill
-            value={counts.finished}
-            tone="done"
-            icon={
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4 fill-none stroke-current stroke-2"
-              >
-                <path d="M5 12l4 4L19 6" />
-              </svg>
-            }
-          />
-
-          {counts.postponed > 0 && (
-            <StatPill
-              value={counts.postponed}
-              tone="warn"
-              icon={
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4 fill-none stroke-current stroke-2"
-                >
-                  <path d="M12 7v5l3 2" />
-                  <circle cx="12" cy="12" r="8" />
-                </svg>
-              }
-            />
-          )}
-
-          {counts.canceled > 0 && (
-            <StatPill
-              value={counts.canceled}
-              tone="muted"
-              icon={
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4 fill-none stroke-current stroke-2"
-                >
-                  <path d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              }
-            />
-          )}
         </div>
       </section>
 
-      <MatchesGroup
-        id="upcoming"
-        title="Скоро"
-        count={counts.upcoming}
-        matches={upcomingMatches}
-        emptyText="Порожньо"
-        gameId={gameId}
-      />
+      {heroMatch ? (
+        <section className="theme-panel rounded-[2rem] p-4 sm:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-black text-[var(--text)]">
+                {heroMatch.status === "LIVE" ? "Матч прямо зараз" : "Найближчий матч"}
+              </h2>
+              <p className="text-sm text-[var(--text-soft)]">
+                Головний матч винесено окремо, щоб він не губився у списку.
+              </p>
+            </div>
+          </div>
 
-      <MatchesGroup
+          <MatchRow match={heroMatch} gameId={gameId} tone={heroTone} featured />
+        </section>
+      ) : null}
+
+      <MatchSection
         id="live"
-        title="LIVE"
-        count={counts.live}
-        matches={liveMatches}
-        emptyText="Зараз немає"
+        title="LIVE матчі"
+        subtitle="Матчі, які зараз у грі."
+        tone="live"
+        matches={liveWithoutHero}
         gameId={gameId}
+        emptyText="Зараз немає live матчів."
+        initialVisible={4}
       />
 
-      <MatchesGroup
+      <MatchSection
+        id="upcoming"
+        title="Найближчі матчі"
+        subtitle="Матчі, на які ще можна орієнтуватися для прогнозів."
+        tone="upcoming"
+        matches={upcomingWithoutHero}
+        gameId={gameId}
+        emptyText="Найближчих матчів поки немає."
+        initialVisible={6}
+      />
+
+      <MatchSection
         id="finished"
-        title="Готово"
-        count={counts.finished}
+        title="Завершені матчі"
+        subtitle="Історія зіграних матчів та результатів."
+        tone="done"
         matches={finishedMatches}
-        emptyText="Поки немає"
         gameId={gameId}
+        emptyText="Завершених матчів ще немає."
+        initialVisible={4}
       />
 
-      {counts.postponed > 0 && (
-        <MatchesGroup
+      {counts.postponed > 0 ? (
+        <MatchSection
           id="postponed"
-          title="Пауза"
-          count={counts.postponed}
+          title="Перенесені матчі"
+          subtitle="Матчі, які тимчасово поставлені на паузу."
+          tone="warn"
           matches={postponedMatches}
-          emptyText="Немає"
           gameId={gameId}
+          emptyText="Перенесених матчів немає."
+          initialVisible={4}
         />
-      )}
+      ) : null}
 
-      {counts.canceled > 0 && (
-        <MatchesGroup
+      {counts.canceled > 0 ? (
+        <MatchSection
           id="canceled"
-          title="Стоп"
-          count={counts.canceled}
+          title="Скасовані матчі"
+          subtitle="Матчі, які більше не активні."
+          tone="muted"
           matches={canceledMatches}
-          emptyText="Немає"
           gameId={gameId}
+          emptyText="Скасованих матчів немає."
+          initialVisible={4}
         />
-      )}
+      ) : null}
     </div>
   );
 }
