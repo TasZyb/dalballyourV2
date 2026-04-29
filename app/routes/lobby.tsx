@@ -1,104 +1,37 @@
-import { Link, useLoaderData, data, type LoaderFunctionArgs } from "react-router";
-import { Form } from "react-router";
+import { Link, Form, data, useLoaderData, type LoaderFunctionArgs } from "react-router";
 import { useMemo, useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 
-/**
- * =========================================================
- * TYPES
- * =========================================================
- */
+type NextMatch = {
+  id: string;
+  startTime: Date;
+  homeTeam: string;
+  awayTeam: string;
+  status: string;
+};
 
-type LeagueLobbyCard = {
+type LobbyGame = {
   id: string;
   name: string;
   slug: string | null;
+  mode: "GROUP" | "CAREER";
   inviteCode: string;
-  visibility: string;
   status: string;
-  membersCount: number;
-  matchesCount: number;
-  ownerId: string;
-  ownerName: string;
-  linkedTournamentName: string | null;
-  createdAt: Date;
   bannerUrl: string | null;
   avatarUrl: string | null;
-
+  linkedTournamentName: string | null;
+  favoriteTeamName: string | null;
+  favoriteTeamLogo: string | null;
+  membersCount: number;
+  matchesCount: number;
   liveMatchesCount: number;
   finishedMatchesCount: number;
   pendingPredictionsCount: number;
   submittedPredictionsCount: number;
   exactHitsCount: number;
-
-  nextMatch: {
-    id: string;
-    startTime: Date;
-    homeTeam: string;
-    awayTeam: string;
-    status: string;
-  } | null;
+  nextMatch: NextMatch | null;
 };
-
-type CareerLobbyCard = {
-  id: string;
-  name: string;
-  slug: string | null;
-  status: string;
-
-  favoriteTeamId: string | null;
-  favoriteTeamName: string | null;
-  favoriteTeamLogo: string | null;
-
-  matchesCount: number;
-  pendingPredictionsCount: number;
-  submittedPredictionsCount: number;
-  exactHitsCount: number;
-
-  bannerUrl: string | null;
-
-  nextMatch: {
-    id: string;
-    startTime: Date;
-    homeTeam: string;
-    awayTeam: string;
-    status: string;
-  } | null;
-};
-
-type LobbySpotlight =
-  | {
-      type: "career";
-      gameId: string;
-      gameName: string;
-      teamName: string | null;
-      teamLogo: string | null;
-      pendingPredictionsCount: number;
-      nextMatch: {
-        id: string;
-        startTime: Date;
-        homeTeam: string;
-        awayTeam: string;
-        status: string;
-      } | null;
-    }
-  | {
-      type: "league";
-      gameId: string;
-      gameName: string;
-      membersCount: number;
-      liveMatchesCount: number;
-      pendingPredictionsCount: number;
-      nextMatch: {
-        id: string;
-        startTime: Date;
-        homeTeam: string;
-        awayTeam: string;
-        status: string;
-      } | null;
-    }
-  | null;
 
 type LobbyStats = {
   leagueGamesCount: number;
@@ -108,22 +41,17 @@ type LobbyStats = {
   totalExactHits: number;
 };
 
-function isMatchClosed(match: {
-  status: string;
-  startTime: Date | string;
-}) {
-  const startTime = new Date(match.startTime);
-  const now = new Date();
+type LobbyTab = "leagues" | "solo" | "create" | "rules";
 
-  if (
+function isMatchClosed(match: { status: string; startTime: Date | string }) {
+  const startTime = new Date(match.startTime);
+
+  return (
     match.status === "FINISHED" ||
     match.status === "CANCELED" ||
-    match.status === "POSTPONED"
-  ) {
-    return true;
-  }
-
-  return startTime <= now;
+    match.status === "POSTPONED" ||
+    startTime <= new Date()
+  );
 }
 
 function formatMatchDate(value: Date | string) {
@@ -135,14 +63,15 @@ function formatMatchDate(value: Date | string) {
   }).format(new Date(value));
 }
 
-/**
- * =========================================================
- * LOADER
- * =========================================================
- *
- * ЗАРАЗ ТУТ СПЕЦІАЛЬНО ДАНО СКЕЛЕТ.
- * КОЛИ ДОДАСИ mode / favoriteTeamId В Game — просто розділиш дані.
- */
+function getSoonestGame(games: LobbyGame[]) {
+  return [...games]
+    .filter((game) => game.nextMatch)
+    .sort((a, b) => {
+      const aTime = new Date(a.nextMatch!.startTime).getTime();
+      const bTime = new Date(b.nextMatch!.startTime).getTime();
+      return aTime - bTime;
+    })[0] ?? null;
+}
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const currentUser = await getCurrentUser(request);
@@ -150,9 +79,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (!currentUser) {
     return data({
       currentUser: null,
-      leagueGames: [] as LeagueLobbyCard[],
-      careerGames: [] as CareerLobbyCard[],
-      spotlight: null as LobbySpotlight,
+      leagueGames: [] as LobbyGame[],
+      careerGames: [] as LobbyGame[],
       stats: {
         leagueGamesCount: 0,
         careerGamesCount: 0,
@@ -162,21 +90,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
       } satisfies LobbyStats,
     });
   }
-
-  /**
-   * ---------------------------------------------------------
-   * ТИМЧАСОВО:
-   * тут можеш поки підтягнути всі ігри як раніше
-   * і руками розкласти їх на leagueGames / careerGames.
-   *
-   * КОЛИ ДОДАСИ:
-   *   mode GameMode
-   *   favoriteTeamId String?
-   * в model Game
-   *
-   * зможеш робити нормальний поділ.
-   * ---------------------------------------------------------
-   */
 
   const memberships = await prisma.gameMember.findMany({
     where: {
@@ -188,7 +101,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         include: {
           owner: true,
           linkedTournament: true,
-          // favoriteTeam: true, // <- коли додаси relation
+          favoriteTeam: true,
           _count: {
             select: {
               members: true,
@@ -228,26 +141,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
     },
   });
 
-  /**
-   * ---------------------------------------------------------
-   * DEMO-РОЗКЛАДКА:
-   * поки ти ще не додав mode в БД, тут можна залишити:
-   * всі поточні ігри -> leagueGames
-   * careerGames -> []
-   *
-   * ПІСЛЯ МІГРАЦІЇ:
-   * membership.game.mode === "CAREER" ? career : league
-   * ---------------------------------------------------------
-   */
-
-  const leagueGames: LeagueLobbyCard[] = memberships.map((membership) => {
-    const gameMatches = membership.game.gameMatches;
-    const predictions = membership.game.predictions;
-
-    const predictedMatchIds = new Set(predictions.map((prediction) => prediction.matchId));
+  const games: LobbyGame[] = memberships.map((membership) => {
+    const game = membership.game;
+    const predictedMatchIds = new Set(game.predictions.map((prediction) => prediction.matchId));
 
     const nextMatchRaw =
-      gameMatches.find((gm) => {
+      game.gameMatches.find((gm) => {
         const start = new Date(gm.match.startTime);
         return (
           start >= new Date() &&
@@ -257,41 +156,39 @@ export async function loader({ request }: LoaderFunctionArgs) {
         );
       }) ?? null;
 
-    const liveMatchesCount = gameMatches.filter((gm) => gm.match.status === "LIVE").length;
-    const finishedMatchesCount = gameMatches.filter(
+    const liveMatchesCount = game.gameMatches.filter(
+      (gm) => gm.match.status === "LIVE"
+    ).length;
+
+    const finishedMatchesCount = game.gameMatches.filter(
       (gm) => gm.match.status === "FINISHED"
     ).length;
 
-    const pendingPredictionsCount = gameMatches.filter((gm) => {
+    const pendingPredictionsCount = game.gameMatches.filter((gm) => {
       if (gm.isLocked) return false;
       if (isMatchClosed(gm.match)) return false;
       return !predictedMatchIds.has(gm.match.id);
     }).length;
 
     return {
-      id: membership.game.id,
-      name: membership.game.name,
-      slug: membership.game.slug,
-      inviteCode: membership.game.inviteCode,
-      visibility: membership.game.visibility,
-      status: membership.game.status,
-      membersCount: membership.game._count.members,
-      matchesCount: membership.game._count.gameMatches,
-      ownerId: membership.game.ownerId,
-      ownerName:
-        membership.game.owner.displayName ||
-        membership.game.owner.name ||
-        membership.game.owner.email ||
-        "Гравець",
-      linkedTournamentName: membership.game.linkedTournament?.name ?? null,
-      createdAt: membership.game.createdAt,
-      bannerUrl: membership.game.bannerUrl ?? null,
-      avatarUrl: membership.game.avatarUrl ?? null,
+      id: game.id,
+      name: game.name,
+      slug: game.slug,
+      mode: game.mode,
+      inviteCode: game.inviteCode,
+      status: game.status,
+      bannerUrl: game.bannerUrl ?? null,
+      avatarUrl: game.avatarUrl ?? null,
+      linkedTournamentName: game.linkedTournament?.name ?? null,
+      favoriteTeamName: game.favoriteTeam?.shortName || game.favoriteTeam?.name || null,
+      favoriteTeamLogo: game.favoriteTeam?.logo ?? null,
+      membersCount: game._count.members,
+      matchesCount: game._count.gameMatches,
       liveMatchesCount,
       finishedMatchesCount,
       pendingPredictionsCount,
-      submittedPredictionsCount: predictions.length,
-      exactHitsCount: predictions.filter((prediction) => prediction.wasExact).length,
+      submittedPredictionsCount: game.predictions.length,
+      exactHitsCount: game.predictions.filter((prediction) => prediction.wasExact).length,
       nextMatch: nextMatchRaw
         ? {
             id: nextMatchRaw.match.id,
@@ -306,201 +203,172 @@ export async function loader({ request }: LoaderFunctionArgs) {
     };
   });
 
-  const careerGames: CareerLobbyCard[] = [];
-
-  const totalLiveMatches = leagueGames.reduce((sum, game) => sum + game.liveMatchesCount, 0);
-  const totalPendingPredictions =
-    leagueGames.reduce((sum, game) => sum + game.pendingPredictionsCount, 0) +
-    careerGames.reduce((sum, game) => sum + game.pendingPredictionsCount, 0);
-
-  const totalExactHits =
-    leagueGames.reduce((sum, game) => sum + game.exactHitsCount, 0) +
-    careerGames.reduce((sum, game) => sum + game.exactHitsCount, 0);
-
-  const spotlight: LobbySpotlight =
-    careerGames[0]
-      ? {
-          type: "career",
-          gameId: careerGames[0].id,
-          gameName: careerGames[0].name,
-          teamName: careerGames[0].favoriteTeamName,
-          teamLogo: careerGames[0].favoriteTeamLogo,
-          pendingPredictionsCount: careerGames[0].pendingPredictionsCount,
-          nextMatch: careerGames[0].nextMatch,
-        }
-      : leagueGames[0]
-      ? {
-          type: "league",
-          gameId: leagueGames[0].id,
-          gameName: leagueGames[0].name,
-          membersCount: leagueGames[0].membersCount,
-          liveMatchesCount: leagueGames[0].liveMatchesCount,
-          pendingPredictionsCount: leagueGames[0].pendingPredictionsCount,
-          nextMatch: leagueGames[0].nextMatch,
-        }
-      : null;
+  const leagueGames = games.filter((game) => game.mode === "GROUP");
+  const careerGames = games.filter((game) => game.mode === "CAREER");
 
   return data({
     currentUser,
     leagueGames,
     careerGames,
-    spotlight,
     stats: {
       leagueGamesCount: leagueGames.length,
       careerGamesCount: careerGames.length,
-      totalLiveMatches,
-      totalPendingPredictions,
-      totalExactHits,
+      totalLiveMatches: games.reduce((sum, game) => sum + game.liveMatchesCount, 0),
+      totalPendingPredictions: games.reduce(
+        (sum, game) => sum + game.pendingPredictionsCount,
+        0
+      ),
+      totalExactHits: games.reduce((sum, game) => sum + game.exactHitsCount, 0),
     } satisfies LobbyStats,
   });
 }
 
-/**
- * =========================================================
- * PAGE
- * =========================================================
- */
-
 export default function LobbyPage() {
-  const { currentUser, leagueGames, careerGames, spotlight, stats } =
-    useLoaderData<typeof loader>();
+  const { currentUser, leagueGames, careerGames, stats } = useLoaderData<typeof loader>();
+  const [activeTab, setActiveTab] = useState<LobbyTab>("leagues");
 
-  const [helpOpen, setHelpOpen] = useState(false);
+  const soonestLeagueGame = useMemo(() => getSoonestGame(leagueGames), [leagueGames]);
+  const soonestCareerGame = useMemo(() => getSoonestGame(careerGames), [careerGames]);
+
+  if (!currentUser) {
+    return <GuestLobby />;
+  }
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#060b12] text-white">
+    <main className="theme-page relative overflow-hidden px-3 py-3 sm:px-5 sm:py-5">
       <LobbyBackground />
 
-      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
-        <LobbyHeader currentUser={currentUser} onOpenHelp={() => setHelpOpen(true)} />
+      <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-4">
+        <LobbyHeader currentUser={currentUser} />
 
-        <LobbyHeroModeSelect currentUser={currentUser} />
+        <CompactOverview stats={stats} />
 
-        <LobbyMainSpotlight spotlight={spotlight} />
+        <LobbyTabs activeTab={activeTab} onChange={setActiveTab} />
 
-        <LobbyQuickStats stats={stats} />
+        {activeTab === "leagues" ? (
+          <GamesTab
+            type="league"
+            title="Твої ліги"
+            emptyTitle="Ще немає дружніх ліг"
+            emptyText="Створи лігу або приєднайся по коду."
+            createHref="/create/league"
+            createLabel="Нова ліга"
+            soonestGame={soonestLeagueGame}
+            games={leagueGames}
+          />
+        ) : null}
 
-        <LobbyEntryActions />
+        {activeTab === "solo" ? (
+          <GamesTab
+            type="solo"
+            title="Соло кар’єра"
+            emptyTitle="Ще немає кар’єри"
+            emptyText="Режим у процесі розробки, тут ще поки нічого нема, але лишнім разом не буде нагадати, шо вІНІСІУС ПІДАР"
+            createHref="/create/career"
+            createLabel="Почати кар’єру"
+            soonestGame={soonestCareerGame}
+            games={careerGames}
+          />
+        ) : null}
 
-        <CareerGamesSection games={careerGames} />
+        {activeTab === "create" ? <CreateTab /> : null}
 
-        <LeagueGamesSection games={leagueGames} />
+        {activeTab === "rules" ? <RulesTab /> : null}
       </div>
-
-      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </main>
   );
 }
 
-/**
- * =========================================================
- * LAYOUT / SECTIONS
- * =========================================================
- */
-
-function LobbyBackground() {
+function GuestLobby() {
   return (
-    <div className="pointer-events-none fixed inset-0">
-      <div className="absolute left-[-10%] top-[-10%] h-[28rem] w-[28rem] rounded-full bg-blue-500/10 blur-3xl" />
-      <div className="absolute right-[-10%] top-[10%] h-[24rem] w-[24rem] rounded-full bg-emerald-500/10 blur-3xl" />
-      <div className="absolute bottom-[-10%] left-[20%] h-[26rem] w-[26rem] rounded-full bg-orange-500/10 blur-3xl" />
-      <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.015),transparent_20%,transparent_80%,rgba(255,255,255,0.015))]" />
-    </div>
-  );
-}
+    <main className="theme-page relative overflow-hidden px-4 py-6">
+      <LobbyBackground />
 
-function PageSection({
-  title,
-  subtitle,
-  action,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="space-y-4">
-      <div className="flex items-end justify-between gap-3 px-1">
-        <div className="min-w-0">
-          {subtitle ? (
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40 sm:text-xs">
-              {subtitle}
+      <div className="relative mx-auto flex min-h-[70vh] max-w-4xl items-center">
+        <div className="theme-panel-strong relative w-full overflow-hidden rounded-[2rem] p-6 sm:p-8">
+          <PitchSvg className="absolute inset-0 h-full w-full opacity-30" />
+
+          <div className="relative z-10 max-w-2xl">
+            <div className="theme-accent-bg inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">
+              Match Predictor
             </div>
-          ) : null}
-          <h2 className="mt-1 text-xl font-black tracking-tight text-white sm:text-2xl">
-            {title}
-          </h2>
+
+            <h1 className="mt-5 text-4xl font-black tracking-tight sm:text-6xl">
+              Прогнозуй матчі. Обганяй друзів.
+            </h1>
+
+            <p className="theme-text-soft mt-4 max-w-xl text-sm leading-6 sm:text-base">
+              Дружні ліги, сольна кар’єра, live-матчі, таблиці та точні рахунки.
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                to="/login"
+                className="rounded-2xl bg-[var(--accent)] px-5 py-3 text-sm font-black text-white transition hover:opacity-90"
+              >
+                Увійти
+              </Link>
+
+              <Link
+                to="/create/league"
+                className="theme-button rounded-2xl px-5 py-3 text-sm font-bold"
+              >
+                Створити лігу
+              </Link>
+            </div>
+          </div>
         </div>
-
-        {action ? <div className="shrink-0">{action}</div> : null}
       </div>
-
-      {children}
-    </section>
+    </main>
   );
 }
-
-/**
- * =========================================================
- * HEADER
- * =========================================================
- */
 
 function LobbyHeader({
   currentUser,
-  onOpenHelp,
 }: {
   currentUser: { displayName?: string | null; name?: string | null; email?: string | null } | null;
-  onOpenHelp: () => void;
 }) {
   const displayName =
     currentUser?.displayName || currentUser?.name || currentUser?.email || "Гравець";
 
   return (
-    <header className="flex items-center justify-between gap-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] shadow-lg shadow-black/30">
-          <LeagueLogoMark className="h-8 w-8" />
+    <header className="theme-panel flex items-center justify-between gap-3 rounded-[1.5rem] px-3 py-3 sm:px-4">
+      <Link to="/" className="flex min-w-0 items-center gap-3">
+        <div className="theme-accent-bg flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl">
+          <IconBall className="h-6 w-6" />
         </div>
 
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-white/40">
-            Football lobby
+        <div className="min-w-0">
+          <div className="theme-muted text-[10px] font-black uppercase tracking-[0.2em]">
+            Lobby
           </div>
-          <div className="mt-1 text-2xl font-black tracking-tight text-white">
-            Predict
-          </div>
+          <div className="truncate text-lg font-black">Predict League</div>
         </div>
-      </div>
+      </Link>
 
       <div className="flex items-center gap-2">
-        <div className="hidden rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/70 md:block">
-          Привіт, <span className="font-semibold text-white">{displayName}</span>
-        </div>
-
-        <HeaderIconButton title="Інструкція" onClick={onOpenHelp}>
-          <IconBook />
-        </HeaderIconButton>
+        <Link
+          to="/me"
+          className="theme-button hidden rounded-2xl px-4 py-2 text-sm font-bold sm:inline-flex"
+        >
+          {displayName}
+        </Link>
 
         <Link
           to="/me"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/12 bg-white/7 text-white/80 transition hover:bg-white/12 hover:text-white active:scale-[0.98] sm:h-11 sm:w-11 sm:rounded-2xl"
-          title="Профіль"
+          className="theme-button inline-flex h-10 w-10 items-center justify-center rounded-2xl sm:hidden"
           aria-label="Профіль"
         >
-          <IconUser />
+          <IconUser className="h-5 w-5" />
         </Link>
 
         <Form method="post" action="/logout">
           <button
             type="submit"
-            title="Вийти"
+            className="theme-button inline-flex h-10 w-10 items-center justify-center rounded-2xl"
             aria-label="Вийти"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/12 bg-white/7 text-white/80 transition hover:bg-white/12 hover:text-white active:scale-[0.98] sm:h-11 sm:w-11 sm:rounded-2xl"
           >
-            <IconLogout />
+            <IconLogout className="h-5 w-5" />
           </button>
         </Form>
       </div>
@@ -508,598 +376,208 @@ function LobbyHeader({
   );
 }
 
-/**
- * =========================================================
- * HERO / MODE SELECT
- * =========================================================
- */
+function CompactOverview({ stats }: { stats: LobbyStats }) {
+  return (
+    <section className="grid grid-cols-5 gap-2">
+      <StatPill icon={<IconShield />} label="Ліги" value={stats.leagueGamesCount} />
+      <StatPill icon={<IconStar />} label="Соло" value={stats.careerGamesCount} />
+      <StatPill icon={<IconLive />} label="Live" value={stats.totalLiveMatches} />
+      <StatPill icon={<IconClock />} label="Прогн." value={stats.totalPendingPredictions} />
+      <StatPill icon={<IconTrophy />} label="Точні" value={stats.totalExactHits} />
+    </section>
+  );
+}
 
-function LobbyHeroModeSelect({
-  currentUser,
+function StatPill({
+  icon,
+  label,
+  value,
 }: {
-  currentUser: unknown;
+  icon: React.ReactNode;
+  label: string;
+  value: number;
 }) {
   return (
-    <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#0b1018] p-5 shadow-2xl shadow-black/30 sm:p-7">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,130,18,0.16),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.16),transparent_26%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))]" />
-      <CardPitchLines />
+    <div className="theme-panel flex min-h-20 flex-col items-center justify-center rounded-[1.25rem] px-2 py-3 text-center">
+      <div className="theme-accent mb-1 h-5 w-5">{icon}</div>
+      <div className="text-xl font-black leading-none">{value}</div>
+      <div className="theme-muted mt-1 text-[10px] font-bold uppercase tracking-[0.12em]">
+        {label}
+      </div>
+    </div>
+  );
+}
 
-      <div className="relative z-10">
-        <div className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
-          Головне лобі
+function LobbyTabs({
+  activeTab,
+  onChange,
+}: {
+  activeTab: LobbyTab;
+  onChange: (tab: LobbyTab) => void;
+}) {
+  const tabs: { id: LobbyTab; label: string; icon: React.ReactNode }[] = [
+    { id: "leagues", label: "Ліги", icon: <IconShield /> },
+    { id: "solo", label: "Соло", icon: <IconStar /> },
+    { id: "create", label: "Створити", icon: <IconPlus /> },
+    { id: "rules", label: "Правила", icon: <IconBook /> },
+  ];
+
+  return (
+    <nav className="theme-panel grid grid-cols-4 gap-1 rounded-[1.5rem] p-1">
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.id;
+
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onChange(tab.id)}
+            className={[
+              "flex items-center justify-center gap-2 rounded-[1.15rem] px-2 py-3 text-xs font-black transition sm:text-sm",
+              isActive
+                ? "bg-[var(--accent)] text-white shadow-lg shadow-black/20"
+                : "theme-muted hover:bg-[var(--panel-strong)] hover:text-[var(--text)]",
+            ].join(" ")}
+          >
+            <span className="h-4 w-4">{tab.icon}</span>
+            {tab.label}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function GamesTab({
+  type,
+  title,
+  emptyTitle,
+  emptyText,
+  createHref,
+  createLabel,
+  soonestGame,
+  games,
+}: {
+  type: "league" | "solo";
+  title: string;
+  emptyTitle: string;
+  emptyText: string;
+  createHref: string;
+  createLabel: string;
+  soonestGame: LobbyGame | null;
+  games: LobbyGame[];
+}) {
+  return (
+    <section className="grid gap-4 lg:grid-cols-[0.9fr_1.4fr]">
+      <NextMatchPanel type={type} game={soonestGame} createHref={createHref} />
+
+      <div className="theme-panel rounded-[1.75rem] p-3 sm:p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="theme-accent-bg flex h-9 w-9 items-center justify-center rounded-2xl">
+              {type === "league" ? <IconShield /> : <IconStar />}
+            </div>
+            <h2 className="text-lg font-black">{title}</h2>
+          </div>
+
+          <Link to={createHref} className="theme-button rounded-2xl px-3 py-2 text-xs font-black">
+            {createLabel}
+          </Link>
         </div>
 
-        <h1 className="mt-4 max-w-4xl text-3xl font-black leading-tight tracking-tight text-white sm:text-5xl">
-          Обери, як хочеш грати: з друзями чи побудувати свою кар’єру за клуб
-        </h1>
-
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-white/68 sm:text-base sm:leading-7">
-          Відкривай дружні ліги, запрошуй друзів, або запускай сольну кар’єру
-          й прогнозуй матчі улюбленої команди по максимуму.
-        </p>
-
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          <LeagueModeCard />
-          <CareerModeCard />
-        </div>
+        {games.length ? (
+          <div className="grid gap-2">
+            {games.map((game) => (
+              <CompactGameRow key={game.id} game={game} type={type} />
+            ))}
+          </div>
+        ) : (
+          <EmptyTabState title={emptyTitle} text={emptyText} href={createHref} />
+        )}
       </div>
     </section>
   );
 }
 
-function LeagueModeCard() {
+function NextMatchPanel({
+  type,
+  game,
+  createHref,
+}: {
+  type: "league" | "solo";
+  game: LobbyGame | null;
+  createHref: string;
+}) {
   return (
-    <div className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.05] p-5">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_28%)]" />
+    <div className="theme-panel-strong relative overflow-hidden rounded-[1.75rem] p-4">
+      <PitchSvg className="absolute inset-0 h-full w-full opacity-20" />
 
       <div className="relative z-10">
-        <div className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/55">
-          Friends mode
+        <div className="flex items-center justify-between gap-3">
+          <div className="theme-accent-bg inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.14em]">
+            <IconClock className="h-4 w-4" />
+            Найближчий матч
+          </div>
+
+          {type === "league" ? (
+            <IconWhistle className="theme-accent h-9 w-9" />
+          ) : (
+            <IconBoot className="theme-accent h-9 w-9" />
+          )}
         </div>
 
-        <h3 className="mt-4 text-2xl font-black text-white">Дружня ліга</h3>
-
-        <p className="mt-2 max-w-md text-sm leading-6 text-white/65">
-          Створи свою лігу, запроси друзів, дивись live-матчі та змагайся за
-          таблицю прогнозів.
-        </p>
-
-        <div className="mt-5 grid grid-cols-3 gap-2">
-          <ModeFeatureChip label="Таблиця" />
-          <ModeFeatureChip label="Live" />
-          <ModeFeatureChip label="Код входу" />
-        </div>
-
-        <div className="mt-6 flex flex-wrap gap-2.5">
-          <Link
-            to="/create/league"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90"
-          >
-            <IconPlus className="h-4 w-4" />
-            Створити лігу
-          </Link>
-
-          <Link
-            to="/join"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-          >
-            <IconEnter className="h-4 w-4" />
-            Приєднатись
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CareerModeCard() {
-  return (
-    <div className="relative overflow-hidden rounded-[1.75rem] border border-orange-400/20 bg-[linear-gradient(180deg,rgba(245,130,18,0.08),rgba(255,255,255,0.03))] p-5">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,130,18,0.14),transparent_30%)]" />
-
-      <div className="relative z-10">
-        <div className="inline-flex rounded-full border border-orange-400/20 bg-orange-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-orange-200">
-          Solo mode
-        </div>
-
-        <h3 className="mt-4 text-2xl font-black text-white">Сольна кар’єра</h3>
-
-        <p className="mt-2 max-w-md text-sm leading-6 text-white/65">
-          Обери улюблений клуб, прогнозуй його матчі, вгадуй склади,
-          голеадорів і будуй свою фанатську кар’єру.
-        </p>
-
-        <div className="mt-5 grid grid-cols-3 gap-2">
-          <ModeFeatureChip label="Склади" />
-          <ModeFeatureChip label="Голеадори" />
-          <ModeFeatureChip label="Досягнення" />
-        </div>
-
-        <div className="mt-6 flex flex-wrap gap-2.5">
-          <Link
-            to="/create/career"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#F58212] px-5 py-3 text-sm font-bold text-white transition hover:brightness-110"
-          >
-            <IconSpark className="h-4 w-4" />
-            Почати кар’єру
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ModeFeatureChip({ label }: { label: string }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-center text-xs font-semibold text-white/75">
-      {label}
-    </div>
-  );
-}
-
-/**
- * =========================================================
- * SPOTLIGHT
- * =========================================================
- */
-
-function LobbyMainSpotlight({ spotlight }: { spotlight: LobbySpotlight }) {
-  return (
-    <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-      <div className="rounded-[1.75rem] border border-white/10 bg-[#0b1018] p-5 shadow-xl shadow-black/20">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
-          Фокус зараз
-        </div>
-
-        {!spotlight ? (
+        {game?.nextMatch ? (
           <>
-            <h3 className="mt-3 text-2xl font-black text-white">
-              Поки ще немає активної гри
-            </h3>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-white/60">
-              Почни з дружньої ліги або створи сольну кар’єру за своїй улюблений клуб.
-            </p>
-          </>
-        ) : spotlight.type === "career" ? (
-          <>
-            <h3 className="mt-3 text-2xl font-black text-white">
-              {spotlight.teamName ? `${spotlight.teamName} Career` : spotlight.gameName}
-            </h3>
+            <div className="mt-5">
+              <div className="theme-muted text-xs font-bold uppercase tracking-[0.14em]">
+                {game.name}
+              </div>
 
-            <p className="mt-2 max-w-xl text-sm leading-6 text-white/60">
-              Твоя основна активність зараз — сольна кар’єра. Готуй прогноз до
-              найближчого матчу і не пропусти свій розбір.
-            </p>
+              <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                <TeamBadge label={game.nextMatch.homeTeam} />
+                <div className="theme-accent text-xl font-black">VS</div>
+                <TeamBadge label={game.nextMatch.awayTeam} />
+              </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <MiniMetric label="Режим" valueLabel="Career" />
-              <MiniMetric label="Без прогнозу" value={spotlight.pendingPredictionsCount} />
-              <MiniMetric
-                label="Наступний матч"
-                valueLabel={spotlight.nextMatch ? "Є" : "Немає"}
-              />
-            </div>
-
-            <div className="mt-5 rounded-[1.25rem] border border-white/10 bg-white/[0.04] p-4">
-              <div className="text-xs text-white/45">Найближчий матч</div>
-
-              {spotlight.nextMatch ? (
-                <>
-                  <div className="mt-2 text-base font-black text-white">
-                    {spotlight.nextMatch.homeTeam} — {spotlight.nextMatch.awayTeam}
-                  </div>
-                  <div className="mt-1 text-sm text-white/55">
-                    {formatMatchDate(spotlight.nextMatch.startTime)}
-                  </div>
-                </>
-              ) : (
-                <div className="mt-2 text-sm text-white/55">
-                  Поки немає найближчого запланованого матчу.
+              <div className="theme-card-highlight mt-4 rounded-2xl px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="theme-text-soft text-sm">Старт</span>
+                  <span className="font-black">{formatMatchDate(game.nextMatch.startTime)}</span>
                 </div>
-              )}
+              </div>
             </div>
 
             <Link
-              to={`/games/${spotlight.gameId}`}
-              className="mt-5 inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90"
+              to={`/games/${game.id}`}
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-black text-white transition hover:opacity-90"
             >
-              Продовжити кар’єру
+              Відкрити гру
+              <IconArrow className="h-4 w-4" />
             </Link>
           </>
         ) : (
-          <>
-            <h3 className="mt-3 text-2xl font-black text-white">{spotlight.gameName}</h3>
+          <div className="mt-6">
+            <IconCalendar className="theme-accent h-16 w-16" />
 
-            <p className="mt-2 max-w-xl text-sm leading-6 text-white/60">
-              Найактивніша дружня ліга прямо зараз. Заходь у гру, дивись live і не
-              пропускай свої прогнози.
+            <h3 className="mt-4 text-2xl font-black">Матчів поки немає</h3>
+            <p className="theme-text-soft mt-2 text-sm leading-6">
+              Створи нову гру або додай матчі до існуючої.
             </p>
 
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <MiniMetric label="Режим" valueLabel="League" />
-              <MiniMetric label="Гравців" value={spotlight.membersCount} />
-              <MiniMetric label="LIVE" value={spotlight.liveMatchesCount} />
-              <MiniMetric label="Без прогнозу" value={spotlight.pendingPredictionsCount} />
-            </div>
-
-            <div className="mt-5 rounded-[1.25rem] border border-white/10 bg-white/[0.04] p-4">
-              <div className="text-xs text-white/45">Найближча подія</div>
-
-              {spotlight.nextMatch ? (
-                <>
-                  <div className="mt-2 text-base font-black text-white">
-                    {spotlight.nextMatch.homeTeam} — {spotlight.nextMatch.awayTeam}
-                  </div>
-                  <div className="mt-1 text-sm text-white/55">
-                    {formatMatchDate(spotlight.nextMatch.startTime)}
-                  </div>
-                </>
-              ) : (
-                <div className="mt-2 text-sm text-white/55">
-                  Зараз немає найближчого матчу.
-                </div>
-              )}
-            </div>
-
             <Link
-              to={`/games/${spotlight.gameId}`}
-              className="mt-5 inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90"
+              to={createHref}
+              className="theme-button mt-5 inline-flex rounded-2xl px-4 py-3 text-sm font-black"
             >
-              Відкрити лігу
+              Створити
             </Link>
-          </>
+          </div>
         )}
       </div>
-
-      <div className="rounded-[1.75rem] border border-white/10 bg-[#0b1018] p-5 shadow-xl shadow-black/20">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/40">
-          Швидкий доступ
-        </div>
-
-        <div className="mt-4 grid gap-3">
-          <QuickActionCard
-            title="Створити лігу"
-            description="Запусти дружню гру для компанії."
-            href="/create/league"
-          />
-          <QuickActionCard
-            title="Почати кар’єру"
-            description="Обери клуб і грай сольний сезон."
-            href="/create/career"
-          />
-          <QuickActionCard
-            title="Приєднатись по коду"
-            description="Увійди в існуючу лігу друзів."
-            href="/join"
-          />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function QuickActionCard({
-  title,
-  description,
-  href,
-}: {
-  title: string;
-  description: string;
-  href: string;
-}) {
-  return (
-    <Link
-      to={href}
-      className="group rounded-[1.25rem] border border-white/10 bg-white/[0.04] p-4 transition hover:border-white/20 hover:bg-white/[0.06]"
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-bold text-white">{title}</div>
-          <div className="mt-1 text-sm leading-6 text-white/55">{description}</div>
-        </div>
-
-        <div className="rounded-xl border border-white/10 bg-white/5 p-2 text-white/70 transition group-hover:text-white">
-          <IconEnter className="h-4 w-4" />
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-/**
- * =========================================================
- * STATS
- * =========================================================
- */
-
-function LobbyQuickStats({ stats }: { stats: LobbyStats }) {
-  return (
-    <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-      <MiniMetric label="Ліг" value={stats.leagueGamesCount} />
-      <MiniMetric label="Кар’єр" value={stats.careerGamesCount} />
-      <MiniMetric label="LIVE" value={stats.totalLiveMatches} />
-      <MiniMetric label="Без прогнозу" value={stats.totalPendingPredictions} />
-      <MiniMetric label="Точних влучань" value={stats.totalExactHits} />
-    </section>
-  );
-}
-
-function MiniMetric({
-  label,
-  value,
-  valueLabel,
-}: {
-  label: string;
-  value?: number;
-  valueLabel?: string;
-}) {
-  return (
-    <div className="rounded-[1.15rem] border border-white/10 bg-white/[0.05] px-4 py-3">
-      <div className="text-[11px] uppercase tracking-[0.14em] text-white/40">
-        {label}
-      </div>
-      <div className="mt-1 text-2xl font-black text-white">
-        {valueLabel ?? value ?? 0}
-      </div>
     </div>
   );
 }
 
-/**
- * =========================================================
- * ENTRY ACTIONS
- * =========================================================
- */
-
-function LobbyEntryActions() {
-  return (
-    <PageSection title="Швидкий старт" subtitle="Entry points">
-      <div className="grid gap-3 md:grid-cols-3">
-        <EntryActionTile
-          title="Створити дружню лігу"
-          description="Для гри з друзями, таблиці та спільних прогнозів."
-          href="/create/league"
-          accent="blue"
-        />
-
-        <EntryActionTile
-          title="Почати сольну кар’єру"
-          description="Для матчів улюбленого клубу, складів і голеадорів."
-          href="/create/career"
-          accent="orange"
-        />
-
-        <EntryActionTile
-          title="Приєднатись по коду"
-          description="Швидкий вхід у вже створену лігу."
-          href="/join"
-          accent="neutral"
-        />
-      </div>
-    </PageSection>
-  );
-}
-
-function EntryActionTile({
-  title,
-  description,
-  href,
-  accent,
-}: {
-  title: string;
-  description: string;
-  href: string;
-  accent: "blue" | "orange" | "neutral";
-}) {
-  const accentClass =
-    accent === "blue"
-      ? "from-blue-500/10 to-transparent border-blue-400/15"
-      : accent === "orange"
-      ? "from-orange-500/10 to-transparent border-orange-400/15"
-      : "from-white/5 to-transparent border-white/10";
-
-  return (
-    <Link
-      to={href}
-      className={`group rounded-[1.5rem] border bg-gradient-to-br ${accentClass} p-5 transition hover:-translate-y-1 hover:border-white/20`}
-    >
-      <div className="text-lg font-black text-white">{title}</div>
-      <p className="mt-2 text-sm leading-6 text-white/60">{description}</p>
-
-      <div className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-white/80">
-        Відкрити
-        <IconEnter className="h-4 w-4 transition group-hover:translate-x-0.5" />
-      </div>
-    </Link>
-  );
-}
-
-/**
- * =========================================================
- * CAREER SECTION
- * =========================================================
- */
-
-function CareerGamesSection({ games }: { games: CareerLobbyCard[] }) {
-  return (
-    <PageSection
-      title="Твої кар’єри"
-      subtitle="Solo mode"
-      action={
-        <Link
-          to="/create/career"
-          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/12"
-        >
-          <IconPlus className="h-4 w-4" />
-          Нова кар’єра
-        </Link>
-      }
-    >
-      {games.length ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {games.map((game) => (
-            <CareerGameCard key={game.id} game={game} />
-          ))}
-        </div>
-      ) : (
-        <EmptyCareerState />
-      )}
-    </PageSection>
-  );
-}
-
-function CareerGameCard({ game }: { game: CareerLobbyCard }) {
-  return (
-    <Link
-      to={`/career/${game.id}`}
-      className="group relative overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#0b1018] p-5 shadow-xl shadow-black/20 transition duration-300 hover:-translate-y-1.5 hover:border-orange-300/20"
-    >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,130,18,0.12),transparent_26%)]" />
-
-      <div className="relative z-10">
-        <div className="inline-flex rounded-full border border-orange-400/20 bg-orange-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-orange-200">
-          Career
-        </div>
-
-        <div className="mt-4 flex items-start gap-3">
-          {game.favoriteTeamLogo ? (
-            <img
-              src={game.favoriteTeamLogo}
-              alt={game.favoriteTeamName || game.name}
-              className="h-14 w-14 rounded-2xl border border-white/10 object-cover"
-            />
-          ) : (
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06]">
-              <LeagueLogoMark className="h-8 w-8" />
-            </div>
-          )}
-
-          <div className="min-w-0">
-            <div className="truncate text-xl font-black text-white">{game.name}</div>
-            <div className="mt-1 text-sm text-white/55">
-              {game.favoriteTeamName || "Улюблений клуб"}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-5 grid grid-cols-3 gap-2.5">
-          <CardTinyStat label="Матчів" value={game.matchesCount} />
-          <CardTinyStat label="Без прогнозу" value={game.pendingPredictionsCount} />
-          <CardTinyStat label="Точних" value={game.exactHitsCount} />
-        </div>
-
-        <div className="mt-5 rounded-[1.2rem] border border-white/10 bg-white/[0.04] p-4">
-          <div className="text-xs text-white/45">Найближчий матч</div>
-
-          {game.nextMatch ? (
-            <>
-              <div className="mt-2 text-base font-black text-white">
-                {game.nextMatch.homeTeam} — {game.nextMatch.awayTeam}
-              </div>
-              <div className="mt-1 text-sm text-white/55">
-                {formatMatchDate(game.nextMatch.startTime)}
-              </div>
-            </>
-          ) : (
-            <div className="mt-2 text-sm text-white/55">
-              Наразі немає найближчого матчу.
-            </div>
-          )}
-        </div>
-
-        <div className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-white/85">
-          Продовжити кар’єру
-          <IconEnter className="h-4 w-4 transition group-hover:translate-x-0.5" />
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function EmptyCareerState() {
-  return (
-    <div className="relative overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#0b1018] px-5 py-6 shadow-xl shadow-black/20">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,130,18,0.12),transparent_30%)]" />
-
-      <div className="relative z-10">
-        <div className="inline-flex rounded-full border border-orange-400/20 bg-orange-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-orange-200">
-          Solo mode
-        </div>
-
-        <h4 className="mt-4 text-2xl font-black text-white">
-          Почни свою першу кар’єру
-        </h4>
-
-        <p className="mt-2 max-w-xl text-sm leading-6 text-white/65">
-          Обери клуб, за який хочеш “жити сезон”, і прогнозуй матчі максимально
-          детально: рахунок, склад, голеадорів, хід гри.
-        </p>
-
-        <div className="mt-5">
-          <Link
-            to="/create/career"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#F58212] px-5 py-3 text-sm font-bold text-white transition hover:brightness-110"
-          >
-            <IconSpark className="h-4 w-4" />
-            Створити кар’єру
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/**
- * =========================================================
- * LEAGUE SECTION
- * =========================================================
- */
-
-function LeagueGamesSection({ games }: { games: LeagueLobbyCard[] }) {
-  return (
-    <PageSection
-      title="Твої ліги"
-      subtitle="Friends mode"
-      action={
-        <div className="flex gap-2">
-          <Link
-            to="/create/league"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/12"
-          >
-            <IconPlus className="h-4 w-4" />
-            Нова ліга
-          </Link>
-
-          <Link
-            to="/join"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/12 bg-white/8 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/12"
-          >
-            <IconEnter className="h-4 w-4" />
-            Join
-          </Link>
-        </div>
-      }
-    >
-      {games.length ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {games.map((game) => (
-            <LeagueGameCard key={game.id} game={game} />
-          ))}
-        </div>
-      ) : (
-        <EmptyLeagueState />
-      )}
-    </PageSection>
-  );
-}
-
-function LeagueGameCard({ game }: { game: LeagueLobbyCard }) {
-  const progress =
-    game.matchesCount > 0
-      ? Math.round((game.finishedMatchesCount / game.matchesCount) * 100)
-      : 0;
-  console.log(game);
-  
+function CompactGameRow({ game, type }: { game: LobbyGame; type: "league" | "solo" }) {
   const initials = useMemo(() => {
     return game.name
       .split(" ")
@@ -1109,507 +587,384 @@ function LeagueGameCard({ game }: { game: LeagueLobbyCard }) {
       .toUpperCase();
   }, [game.name]);
 
+  const progress =
+    game.matchesCount > 0
+      ? Math.round((game.finishedMatchesCount / game.matchesCount) * 100)
+      : 0;
+
   return (
     <Link
       to={`/games/${game.id}`}
-      className="group relative overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#0b1018] shadow-xl shadow-black/20 transition duration-300 hover:-translate-y-1.5 hover:border-white/20"
+      className="group theme-card-highlight grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[1.25rem] p-3 transition hover:bg-[var(--panel-strong)]"
     >
-      {game.bannerUrl ? (
-        <>
+      <div className="theme-accent-bg flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl font-black">
+        {type === "solo" && game.favoriteTeamLogo ? (
           <img
-            src={game.bannerUrl}
-            alt={game.name}
-            className="absolute inset-0 h-full w-full object-cover opacity-20 transition duration-500 group-hover:scale-[1.03] group-hover:opacity-30"
+            src={game.favoriteTeamLogo}
+            alt={game.favoriteTeamName || game.name}
+            className="h-8 w-8 object-contain"
           />
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,10,18,0.18),rgba(7,10,18,0.88))]" />
-        </>
-      ) : (
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.14),transparent_26%),linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))]" />
-      )}
+        ) : game.avatarUrl ? (
+          <img src={game.avatarUrl} alt={game.name} className="h-full w-full object-cover" />
+        ) : (
+          initials
+        )}
+      </div>
 
-      <div className="relative z-10 p-5">
-        <div className="flex items-start gap-3">
-          <GameAvatar avatarUrl={game.avatarUrl} fallback={game.name} initials={initials} />
+      <div className="min-w-0">
+        <div className="truncate font-black">{game.name}</div>
 
-          <div className="min-w-0">
-            <div className="truncate text-xl font-black text-white">{game.name}</div>
-            <div className="mt-1 text-sm text-white/55">
-              {game.linkedTournamentName || "Custom league"}
-            </div>
-          </div>
+        <div className="theme-muted mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold">
+          <span>{type === "solo" ? game.favoriteTeamName || "Career" : game.linkedTournamentName || "League"}</span>
+          <span>{game.membersCount} гравців</span>
+          <span>{game.pendingPredictionsCount} без прогнозу</span>
         </div>
 
-        <div className="mt-5 grid grid-cols-3 gap-2.5">
-          <CardTinyStat label="Гравців" value={game.membersCount} />
-          <CardTinyStat label="LIVE" value={game.liveMatchesCount} />
-          <CardTinyStat label="Без прогнозу" value={game.pendingPredictionsCount} />
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--panel)]">
+          <div
+            className="h-full rounded-full bg-[var(--accent)] transition-all"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-col items-end gap-1">
+        {game.liveMatchesCount > 0 ? (
+          <span className="theme-success-bg rounded-full px-2 py-1 text-[10px] font-black uppercase">
+            Live
+          </span>
+        ) : null}
+
+        {game.nextMatch ? (
+          <span className="theme-muted text-right text-xs">
+            {formatMatchDate(game.nextMatch.startTime)}
+          </span>
+        ) : (
+          <IconArrow className="theme-muted h-5 w-5 transition group-hover:translate-x-0.5" />
+        )}
+      </div>
+    </Link>
+  );
+}
+
+function CreateTab() {
+  return (
+    <section className="grid gap-4 md:grid-cols-3">
+      <CreateCard
+        title="Дружня ліга"
+        text="Для друзів, кодів запрошення, таблиці та спільних матчів."
+        href="/create/league"
+        icon={<IconShield />}
+      />
+
+      <CreateCard
+        title="Соло кар’єра"
+        text="Для улюбленого клубу, особистих прогнозів і власного прогресу."
+        href="/create/career"
+        icon={<IconStar />}
+      />
+
+      <CreateCard
+        title="Приєднатись"
+        text="Введи код ліги й одразу заходь у гру."
+        href="/join"
+        icon={<IconKey />}
+      />
+    </section>
+  );
+}
+
+function CreateCard({
+  title,
+  text,
+  href,
+  icon,
+}: {
+  title: string;
+  text: string;
+  href: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <Link
+      to={href}
+      className="theme-panel group relative min-h-48 overflow-hidden rounded-[1.75rem] p-5 transition hover:-translate-y-1"
+    >
+      <PitchSvg className="absolute inset-0 h-full w-full opacity-10" />
+
+      <div className="relative z-10">
+        <div className="theme-accent-bg flex h-14 w-14 items-center justify-center rounded-2xl">
+          <span className="h-8 w-8">{icon}</span>
         </div>
 
-        <div className="mt-5 rounded-[1.2rem] border border-white/10 bg-white/[0.04] p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-xs text-white/45">Прогрес сезону</div>
-            <div className="text-xs font-semibold text-white/55">{progress}%</div>
-          </div>
+        <h3 className="mt-5 text-2xl font-black">{title}</h3>
+        <p className="theme-text-soft mt-2 text-sm leading-6">{text}</p>
 
-          <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
-            <div
-              className="h-full rounded-full bg-white"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-
-          <div className="mt-4 text-xs text-white/45">Найближчий матч</div>
-
-          {game.nextMatch ? (
-            <>
-              <div className="mt-2 text-base font-black text-white">
-                {game.nextMatch.homeTeam} — {game.nextMatch.awayTeam}
-              </div>
-              <div className="mt-1 text-sm text-white/55">
-                {formatMatchDate(game.nextMatch.startTime)}
-              </div>
-            </>
-          ) : (
-            <div className="mt-2 text-sm text-white/55">
-              Зараз немає найближчого матчу.
-            </div>
-          )}
-        </div>
-
-        <div className="mt-5 flex items-center justify-between gap-3">
-          <div className="text-sm text-white/55">Owner: {game.ownerName}</div>
-          <div className="inline-flex items-center gap-2 text-sm font-semibold text-white/85">
-            Відкрити
-            <IconEnter className="h-4 w-4 transition group-hover:translate-x-0.5" />
-          </div>
+        <div className="theme-accent mt-5 inline-flex items-center gap-2 text-sm font-black">
+          Відкрити
+          <IconArrow className="h-4 w-4 transition group-hover:translate-x-0.5" />
         </div>
       </div>
     </Link>
   );
 }
 
-function EmptyLeagueState() {
+function RulesTab() {
   return (
-    <div className="relative overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#0b1018] px-5 py-6 shadow-xl shadow-black/20">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(96,165,250,0.14),transparent_30%)]" />
-
-      <div className="relative z-10">
-        <div className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/60">
-          Friends mode
+    <section className="theme-panel rounded-[1.75rem] p-4 sm:p-5">
+      <div className="mb-4 flex items-center gap-3">
+        <div className="theme-accent-bg flex h-12 w-12 items-center justify-center rounded-2xl">
+          <IconBook className="h-6 w-6" />
         </div>
 
-        <h4 className="mt-4 text-2xl font-black text-white">
-          У тебе ще немає дружньої ліги
-        </h4>
-
-        <p className="mt-2 max-w-xl text-sm leading-6 text-white/65">
-          Створи свою лігу для друзів або приєднайся до вже існуючої по коду.
-        </p>
-
-        <div className="mt-5 flex flex-wrap gap-2.5">
-          <Link
-            to="/create/league"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90"
-          >
-            <IconPlus className="h-4 w-4" />
-            Створити лігу
-          </Link>
-
-          <Link
-            to="/join"
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-          >
-            <IconEnter className="h-4 w-4" />
-            Приєднатись
-          </Link>
+        <div>
+          <h2 className="text-xl font-black">Правила гри</h2>
+          <p className="theme-muted text-sm">Коротко, без зайвого тексту.</p>
         </div>
       </div>
-    </div>
-  );
-}
 
-/**
- * =========================================================
- * SHARED SMALL UI
- * =========================================================
- */
-
-function GameAvatar({
-  avatarUrl,
-  fallback,
-  initials,
-}: {
-  avatarUrl: string | null;
-  fallback: string;
-  initials: string;
-}) {
-  if (avatarUrl) {
-    return (
-      <img
-        src={avatarUrl}
-        alt={fallback}
-        className="h-12 w-12 rounded-2xl border border-white/10 object-cover shadow-lg shadow-black/30 sm:h-14 sm:w-14"
-      />
-    );
-  }
-
-  return (
-    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] shadow-lg shadow-black/30 sm:h-14 sm:w-14">
-      <span className="text-sm font-black text-white">{initials}</span>
-    </div>
-  );
-}
-
-function CardTinyStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: number;
-}) {
-  return (
-    <div className="rounded-[1rem] border border-white/10 bg-white/[0.05] px-3 py-2.5">
-      <div className="text-[10px] uppercase tracking-[0.14em] text-white/38">
-        {label}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <RuleCard icon={<IconTrophy />} title="3 бали" text="Точний рахунок." />
+        <RuleCard icon={<IconCheck />} title="1 бал" text="Правильний результат." />
+        <RuleCard icon={<IconLive />} title="Live" text="Матч закрився — прогноз не змінюємо." />
       </div>
-      <div className="mt-1 text-lg font-black text-white">{value}</div>
-    </div>
+    </section>
   );
 }
 
-function HeaderIconButton({
-  children,
-  onClick,
-  title,
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-  title: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      aria-label={title}
-      className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/12 bg-white/7 text-white/80 transition hover:bg-white/12 hover:text-white active:scale-[0.98] sm:h-11 sm:w-11 sm:rounded-2xl"
-    >
-      {children}
-    </button>
-  );
-}
-
-function CardPitchLines() {
-  return (
-    <svg
-      viewBox="0 0 400 260"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="absolute inset-0 h-full w-full"
-      aria-hidden="true"
-    >
-      <rect x="24" y="24" width="352" height="212" rx="28" stroke="rgba(255,255,255,0.08)" />
-      <path d="M200 24V236" stroke="rgba(255,255,255,0.07)" />
-      <circle cx="200" cy="130" r="34" stroke="rgba(255,255,255,0.08)" />
-      <path
-        d="M24 82H74C88 82 100 94 100 108V152C100 166 88 178 74 178H24"
-        stroke="rgba(255,255,255,0.07)"
-      />
-      <path
-        d="M376 82H326C312 82 300 94 300 108V152C300 166 312 178 326 178H376"
-        stroke="rgba(255,255,255,0.07)"
-      />
-    </svg>
-  );
-}
-
-/**
- * =========================================================
- * HELP MODAL
- * =========================================================
- */
-
-function HelpModal({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-2xl overflow-hidden rounded-[1.75rem] border border-white/10 bg-[#0b1018] shadow-2xl shadow-black/50 sm:rounded-[2rem]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(96,165,250,0.18),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.14),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01))]" />
-
-        <div className="relative z-10 p-4 sm:p-7">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.28em] text-white/40 sm:text-[11px]">
-                Інструкція
-              </div>
-              <h3 className="mt-2 text-xl font-black text-white sm:text-3xl">
-                Як працює нове лобі
-              </h3>
-            </div>
-
-            <button
-              onClick={onClose}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-lg text-white/70 transition hover:bg-white/10 hover:text-white"
-            >
-              ×
-            </button>
-          </div>
-
-          <div className="mt-5 grid gap-3 sm:mt-6 sm:grid-cols-3">
-            <HelpStep
-              number="1"
-              title="Обери режим"
-              text="Дружня ліга для гри з друзями або сольна кар’єра за свій клуб."
-            />
-            <HelpStep
-              number="2"
-              title="Зайди в активність"
-              text="Використай spotlight або секції нижче, щоб швидко продовжити гру."
-            />
-            <HelpStep
-              number="3"
-              title="Роби прогнози"
-              text="Не пропускай матчі, склади й голеадорів — все крутиться навколо твоїх передматчевих рішень."
-            />
-          </div>
-
-          <div className="mt-5 flex justify-end sm:mt-6">
-            <button
-              onClick={onClose}
-              className="inline-flex items-center justify-center rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90"
-            >
-              Зрозуміло
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function HelpStep({
-  number,
+function RuleCard({
+  icon,
   title,
   text,
 }: {
-  number: string;
+  icon: React.ReactNode;
   title: string;
   text: string;
 }) {
   return (
-    <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] p-4 sm:rounded-[1.5rem]">
-      <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-sm font-black text-white">
-        {number}
-      </div>
-      <h4 className="text-base font-black text-white">{title}</h4>
-      <p className="mt-2 text-sm leading-6 text-white/65">{text}</p>
+    <div className="theme-card-highlight rounded-[1.35rem] p-4">
+      <div className="theme-accent mb-4 h-9 w-9">{icon}</div>
+      <div className="text-xl font-black">{title}</div>
+      <div className="theme-text-soft mt-1 text-sm">{text}</div>
     </div>
   );
 }
 
-/**
- * =========================================================
- * ICONS / LOGO
- * =========================================================
- */
-
-function LeagueLogoMark({ className = "h-8 w-8" }: { className?: string }) {
+function EmptyTabState({
+  title,
+  text,
+  href,
+}: {
+  title: string;
+  text: string;
+  href: string;
+}) {
   return (
-    <svg
-      viewBox="0 0 64 64"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      role="img"
-      aria-label="Soccer ball logo"
-    >
-      <defs>
-        <radialGradient
-          id="ballBody"
-          cx="0"
-          cy="0"
-          r="1"
-          gradientUnits="userSpaceOnUse"
-          gradientTransform="translate(24 20) rotate(45) scale(34)"
-        >
-          <stop offset="0%" stopColor="#33424D" />
-          <stop offset="100%" stopColor="#0F1B23" />
-        </radialGradient>
+    <div className="theme-card-highlight rounded-[1.35rem] p-5">
+      <IconCalendar className="theme-accent h-14 w-14" />
+      <h3 className="mt-4 text-xl font-black">{title}</h3>
+      <p className="theme-text-soft mt-2 text-sm leading-6">{text}</p>
 
-        <linearGradient id="ballStroke" x1="10" y1="8" x2="54" y2="56">
-          <stop offset="0%" stopColor="#FF9A2F" />
-          <stop offset="100%" stopColor="#D87008" />
-        </linearGradient>
+      <Link
+        to={href}
+        className="mt-4 inline-flex rounded-2xl bg-[var(--accent)] px-4 py-3 text-sm font-black text-white"
+      >
+        Почати
+      </Link>
+    </div>
+  );
+}
 
-        <filter id="ballShadow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow
-            dx="0"
-            dy="2"
-            stdDeviation="3"
-            floodColor="#000000"
-            floodOpacity="0.28"
-          />
-        </filter>
-      </defs>
+function TeamBadge({ label }: { label: string }) {
+  return (
+    <div className="flex flex-col items-center gap-2 text-center">
+      <div className="theme-panel flex h-14 w-14 items-center justify-center rounded-2xl text-sm font-black">
+        {label.slice(0, 3).toUpperCase()}
+      </div>
+      <div className="max-w-24 truncate text-sm font-black">{label}</div>
+    </div>
+  );
+}
 
-      <g filter="url(#ballShadow)">
-        <circle
-          cx="32"
-          cy="32"
-          r="23"
-          fill="url(#ballBody)"
-          stroke="url(#ballStroke)"
-          strokeWidth="2.8"
-        />
-        <path
-          d="M32 22.4L38.3 27L35.9 34.3H28.1L25.7 27L32 22.4Z"
-          fill="#1A2831"
-          stroke="url(#ballStroke)"
-          strokeWidth="1.8"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M32 16.6L39.6 19.7L38.3 27L32 22.4L25.7 27L24.4 19.7L32 16.6Z"
-          fill="#263641"
-          stroke="url(#ballStroke)"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M19.5 23.2L24.4 19.7L25.7 27L21.6 34.1L15.8 31.3L15.2 25.9L19.5 23.2Z"
-          fill="#15232B"
-          stroke="url(#ballStroke)"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M44.5 23.2L39.6 19.7L38.3 27L42.4 34.1L48.2 31.3L48.8 25.9L44.5 23.2Z"
-          fill="#18262F"
-          stroke="url(#ballStroke)"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M21.6 34.1L28.1 34.3L31 41.6L25.8 47.1L18.8 42.7L17.7 37.7L21.6 34.1Z"
-          fill="#122029"
-          stroke="url(#ballStroke)"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M42.4 34.1L35.9 34.3L33 41.6L38.2 47.1L45.2 42.7L46.3 37.7L42.4 34.1Z"
-          fill="#13222B"
-          stroke="url(#ballStroke)"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M31 41.6H33L38.2 47.1L32 51.2L25.8 47.1L31 41.6Z"
-          fill="#172730"
-          stroke="url(#ballStroke)"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-      </g>
+function LobbyBackground() {
+  return (
+    <div className="pointer-events-none fixed inset-0">
+      <div className="absolute left-[-12%] top-[-12%] h-80 w-80 rounded-full bg-[var(--hero-glow)] blur-3xl" />
+      <div className="absolute right-[-10%] top-[18%] h-72 w-72 rounded-full bg-[var(--hero-glow-2)] blur-3xl" />
+      <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent,rgba(0,0,0,0.08))]" />
+    </div>
+  );
+}
+
+function PitchSvg({ className = "" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 500 280" fill="none" className={className} aria-hidden="true">
+      <rect x="28" y="24" width="444" height="232" rx="30" stroke="var(--border)" strokeWidth="3" />
+      <path d="M250 24V256" stroke="var(--border)" strokeWidth="3" />
+      <circle cx="250" cy="140" r="42" stroke="var(--border)" strokeWidth="3" />
+      <circle cx="250" cy="140" r="5" fill="var(--accent)" />
+      <path d="M28 88H92C108 88 120 100 120 116V164C120 180 108 192 92 192H28" stroke="var(--border)" strokeWidth="3" />
+      <path d="M472 88H408C392 88 380 100 380 116V164C380 180 392 192 408 192H472" stroke="var(--border)" strokeWidth="3" />
+      <path d="M28 116H58V164H28" stroke="var(--border)" strokeWidth="3" />
+      <path d="M472 116H442V164H472" stroke="var(--border)" strokeWidth="3" />
     </svg>
   );
 }
 
-function IconBook({ className = "h-5 w-5" }: { className?: string }) {
+/* ICONS */
+
+function SvgIcon({
+  children,
+  className = "h-5 w-5",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
     <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M6 5.5C6 4.67 6.67 4 7.5 4H18a1 1 0 0 1 1 1v13.5a1 1 0 0 1-1 1H8.2A2.2 2.2 0 0 0 6 21"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M6 5.5V21M6 5.5C6 6.33 6.67 7 7.5 7H19"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      {children}
     </svg>
   );
 }
 
-function IconUser({ className = "h-5 w-5" }: { className?: string }) {
+function IconBall({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" strokeWidth="1.8" />
-      <path
-        d="M4.75 19.25C5.9 16.84 8.47 15.25 12 15.25s6.1 1.59 7.25 4"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
+    <SvgIcon className={className}>
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+      <path d="M12 7L16 10L14.5 15H9.5L8 10L12 7Z" stroke="currentColor" strokeWidth="2" />
+      <path d="M8 10L4.5 9M16 10L19.5 9M9.5 15L8 19M14.5 15L16 19" stroke="currentColor" strokeWidth="2" />
+    </SvgIcon>
   );
 }
 
-function IconLogout({ className = "h-5 w-5" }: { className?: string }) {
+function IconShield({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M14 7l5 5-5 5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M19 12H9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path
-        d="M10 4H6.75A1.75 1.75 0 0 0 5 5.75v12.5C5 19.22 5.78 20 6.75 20H10"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
+    <SvgIcon className={className}>
+      <path d="M12 3L19 6V11C19 16 16 20 12 21C8 20 5 16 5 11V6L12 3Z" stroke="currentColor" strokeWidth="2" />
+      <path d="M9 12L11 14L15.5 9.5" stroke="currentColor" strokeWidth="2" />
+    </SvgIcon>
   );
 }
 
-function IconPlus({ className = "h-5 w-5" }: { className?: string }) {
+function IconStar({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
+    <SvgIcon className={className}>
+      <path d="M12 3L14.8 8.7L21 9.6L16.5 14L17.6 20.2L12 17.3L6.4 20.2L7.5 14L3 9.6L9.2 8.7L12 3Z" stroke="currentColor" strokeWidth="2" />
+    </SvgIcon>
   );
 }
 
-function IconEnter({ className = "h-5 w-5" }: { className?: string }) {
+function IconPlus({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M14 7l5 5-5 5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path d="M19 12H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
+    <SvgIcon className={className}>
+      <path d="M12 5V19M5 12H19" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+    </SvgIcon>
   );
 }
 
-function IconSpark({ className = "h-5 w-5" }: { className?: string }) {
+function IconBook({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
-      <path
-        d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <SvgIcon className={className}>
+      <path d="M5 5.5C5 4.7 5.7 4 6.5 4H20V18H7C5.9 18 5 18.9 5 20V5.5Z" stroke="currentColor" strokeWidth="2" />
+      <path d="M5 20C5 18.9 5.9 18 7 18H20" stroke="currentColor" strokeWidth="2" />
+    </SvgIcon>
+  );
+}
+
+function IconLive({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <circle cx="12" cy="12" r="3" fill="currentColor" />
+      <path d="M7 7C4.5 9.5 4.5 14.5 7 17M17 7C19.5 9.5 19.5 14.5 17 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </SvgIcon>
+  );
+}
+
+function IconClock({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2" />
+      <path d="M12 7V12L15 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </SvgIcon>
+  );
+}
+
+function IconTrophy({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <path d="M8 4H16V9C16 12 14.3 14 12 14C9.7 14 8 12 8 9V4Z" stroke="currentColor" strokeWidth="2" />
+      <path d="M8 6H4V8C4 10.2 5.8 12 8 12M16 6H20V8C20 10.2 18.2 12 16 12M12 14V18M9 20H15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </SvgIcon>
+  );
+}
+
+function IconUser({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="2" />
+      <path d="M4 21C5 17 8 15 12 15C16 15 19 17 20 21" stroke="currentColor" strokeWidth="2" />
+    </SvgIcon>
+  );
+}
+
+function IconLogout({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <path d="M10 5H5V19H10" stroke="currentColor" strokeWidth="2" />
+      <path d="M14 8L18 12L14 16M18 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </SvgIcon>
+  );
+}
+
+function IconArrow({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <path d="M5 12H19M13 6L19 12L13 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+    </SvgIcon>
+  );
+}
+
+function IconCalendar({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <rect x="4" y="5" width="16" height="15" rx="3" stroke="currentColor" strokeWidth="2" />
+      <path d="M8 3V7M16 3V7M4 10H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </SvgIcon>
+  );
+}
+
+function IconKey({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <circle cx="8" cy="12" r="4" stroke="currentColor" strokeWidth="2" />
+      <path d="M12 12H21M17 12V15M20 12V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </SvgIcon>
+  );
+}
+
+function IconWhistle({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <path d="M5 10H14L19 6V15C19 17.8 16.8 20 14 20H10C7.2 20 5 17.8 5 15V10Z" stroke="currentColor" strokeWidth="2" />
+      <circle cx="12" cy="15" r="2" stroke="currentColor" strokeWidth="2" />
+      <path d="M5 10L3 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </SvgIcon>
+  );
+}
+
+function IconBoot({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <path d="M5 6H11L13 13H19V17H8C6.3 17 5 15.7 5 14V6Z" stroke="currentColor" strokeWidth="2" />
+      <path d="M9 17V20M14 17V20M18 17V20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </SvgIcon>
+  );
+}
+
+function IconCheck({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <path d="M5 12.5L10 17L19 7" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+    </SvgIcon>
   );
 }
