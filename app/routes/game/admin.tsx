@@ -257,80 +257,86 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const { currentUser, game, myRole } = await requireGameAdmin(request, gameId);
 
-  const [teams, tournaments, members, gameMatches, rounds, invites] =
-    await Promise.all([
-      prisma.team.findMany({
-        orderBy: { name: "asc" },
-      }),
-      prisma.tournament.findMany({
+  // ВАЖЛИВО ДЛЯ SUPABASE/RENDER:
+  // Не запускаємо ці запити паралельно через Promise.all, бо на pooler
+  // легко впертися в EMAXCONNSESSION / max clients reached.
+  // Послідовні запити повільніші на кілька мс, але значно стабільніші.
+  const teams = await prisma.team.findMany({
+    orderBy: { name: "asc" },
+  });
+
+  const tournaments = await prisma.tournament.findMany({
+    include: {
+      season: true,
+      rounds: {
+        orderBy: [{ order: "asc" }, { name: "asc" }],
+      },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  const members = await prisma.gameMember.findMany({
+    where: {
+      gameId,
+      status: MEMBERSHIP_STATUS.ACTIVE,
+    },
+    include: {
+      user: true,
+    },
+    orderBy: {
+      joinedAt: "asc",
+    },
+  });
+
+  const gameMatches = await prisma.gameMatch.findMany({
+    where: {
+      gameId,
+    },
+    include: {
+      match: {
         include: {
-          season: true,
-          rounds: {
-            orderBy: [{ order: "asc" }, { name: "asc" }],
-          },
-        },
-        orderBy: { name: "asc" },
-      }),
-      prisma.gameMember.findMany({
-        where: {
-          gameId,
-          status: MEMBERSHIP_STATUS.ACTIVE,
-        },
-        include: {
-          user: true,
-        },
-        orderBy: {
-          joinedAt: "asc",
-        },
-      }),
-      prisma.gameMatch.findMany({
-        where: {
-          gameId,
-        },
-        include: {
-          match: {
+          tournament: true,
+          round: true,
+          homeTeam: true,
+          awayTeam: true,
+          predictions: {
+            where: {
+              gameId,
+            },
             include: {
-              tournament: true,
-              round: true,
-              homeTeam: true,
-              awayTeam: true,
-              predictions: {
-                where: {
-                  gameId,
-                },
-                include: {
-                  user: true,
-                },
-                orderBy: {
-                  submittedAt: "desc",
-                },
-              },
+              user: true,
+            },
+            orderBy: {
+              submittedAt: "desc",
             },
           },
         },
-        orderBy: {
-          match: {
-            startTime: "desc",
-          },
-        },
-        take: 100,
-      }),
-      prisma.round.findMany({
-        include: {
-          tournament: true,
-        },
-        orderBy: [{ tournamentId: "asc" }, { order: "asc" }],
-      }),
-      prisma.gameInvite.findMany({
-        where: {
-          gameId,
-          revokedAt: null,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      }),
-    ]);
+      },
+    },
+    orderBy: {
+      match: {
+        startTime: "desc",
+      },
+    },
+    take: 100,
+  });
+
+  const invites = await prisma.gameInvite.findMany({
+    where: {
+      gameId,
+      revokedAt: null,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  const rounds = tournaments.flatMap((tournament) =>
+    tournament.rounds.map((round) => ({
+      ...round,
+      tournament,
+    }))
+  );
 
   return data({
     currentUser,
