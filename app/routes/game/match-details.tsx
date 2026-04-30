@@ -568,7 +568,7 @@ function CrownIcon() {
   return (
     <svg
       viewBox="0 0 64 64"
-      className="absolute -right-2 -top-3 h-7 w-7 drop-shadow-lg"
+      className="absolute right-[50%] translate-x-[50%] top-[-50%] h-7 w-7 drop-shadow-lg"
       aria-hidden="true"
     >
       <path d="M10 48h44l-4 8H14l-4-8Z" fill="currentColor" className="text-amber-300" />
