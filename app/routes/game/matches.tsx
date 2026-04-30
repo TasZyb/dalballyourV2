@@ -44,6 +44,24 @@ type MatchItem = {
 
 type SectionTone = "live" | "upcoming" | "done" | "warn" | "muted";
 
+const LIVE_STATUSES = ["LIVE", "IN_PLAY", "PAUSED", "HALFTIME", "BREAK"];
+const UPCOMING_STATUSES = ["SCHEDULED", "TIMED"];
+const FINISHED_STATUSES = ["FINISHED"];
+const CANCELED_STATUSES = ["CANCELED", "CANCELLED"];
+const POSTPONED_STATUSES = ["POSTPONED"];
+
+function isLiveStatus(status: string) {
+  return LIVE_STATUSES.includes(status);
+}
+
+function isUpcomingStatus(status: string) {
+  return UPCOMING_STATUSES.includes(status);
+}
+
+function isFinishedStatus(status: string) {
+  return FINISHED_STATUSES.includes(status);
+}
+
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const currentUser = await getCurrentUser(request);
   const gameId = params.gameId;
@@ -120,23 +138,23 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }));
 
   const liveMatches = matches
-    .filter((match) => match.status === "LIVE")
+    .filter((match) => LIVE_STATUSES.includes(match.status))
     .sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime));
 
   const upcomingMatches = matches
-    .filter((match) => match.status === "SCHEDULED")
+    .filter((match) => UPCOMING_STATUSES.includes(match.status))
     .sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime));
 
   const finishedMatches = matches
-    .filter((match) => match.status === "FINISHED")
+    .filter((match) => FINISHED_STATUSES.includes(match.status))
     .sort((a, b) => +new Date(b.startTime) - +new Date(a.startTime));
 
   const canceledMatches = matches
-    .filter((match) => match.status === "CANCELED")
+    .filter((match) => CANCELED_STATUSES.includes(match.status))
     .sort((a, b) => +new Date(b.startTime) - +new Date(a.startTime));
 
   const postponedMatches = matches
-    .filter((match) => match.status === "POSTPONED")
+    .filter((match) => POSTPONED_STATUSES.includes(match.status))
     .sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime));
 
   return data({
@@ -175,12 +193,19 @@ function formatMatchTime(date: Date | string) {
 function getStatusLabel(status: string) {
   switch (status) {
     case "SCHEDULED":
+    case "TIMED":
       return "Скоро";
     case "LIVE":
+    case "IN_PLAY":
       return "LIVE";
+    case "PAUSED":
+    case "HALFTIME":
+    case "BREAK":
+      return "Перерва";
     case "FINISHED":
       return "Завершено";
     case "CANCELED":
+    case "CANCELLED":
       return "Скасовано";
     case "POSTPONED":
       return "Перенесено";
@@ -198,7 +223,9 @@ function getTeamLogoSrc(team: TeamLike) {
 
 function getTournamentLogoSrc(tournament?: TournamentLike | null) {
   if (!tournament?.logo) return null;
-  return tournament.logo.startsWith("/") ? tournament.logo : `/teams/${tournament.logo}.svg`;
+  return tournament.logo.startsWith("/")
+    ? tournament.logo
+    : `/teams/${tournament.logo}.svg`;
 }
 
 function getTournamentSubLabel(match: MatchItem) {
@@ -220,7 +247,8 @@ function getSectionStyle(tone: SectionTone) {
       return {
         panel: "border-[var(--accent)]/20 bg-[var(--accent-soft)]/40",
         title: "text-[var(--accent)]",
-        badge: "bg-[var(--accent-soft)] text-[var(--accent)] ring-[var(--accent)]/20",
+        badge:
+          "bg-[var(--accent-soft)] text-[var(--accent)] ring-[var(--accent)]/20",
         line: "from-[var(--accent)]/50",
         row: "border-[var(--accent)]/15 hover:bg-[var(--accent-soft)]",
         score: "text-[var(--text)]",
@@ -331,7 +359,9 @@ function MatchMeta({ match }: { match: MatchItem }) {
             )}
           </div>
 
-          <span className="max-w-[140px] truncate">{match.tournament.name}</span>
+          <span className="max-w-[140px] truncate">
+            {match.tournament.name}
+          </span>
         </div>
       ) : null}
 
@@ -374,7 +404,7 @@ function MatchRow({
   featured?: boolean;
 }) {
   const style = getSectionStyle(tone);
-  const hasScore = match.status === "FINISHED" || match.status === "LIVE";
+  const hasScore = isFinishedStatus(match.status) || isLiveStatus(match.status);
 
   return (
     <Link
@@ -389,7 +419,8 @@ function MatchRow({
         <MatchMeta match={match} />
 
         <div className="shrink-0 text-right text-[10px] font-bold text-[var(--muted)]">
-          {formatMatchDate(match.startTime)} · {formatMatchTime(match.startTime)}
+          {formatMatchDate(match.startTime)} ·{" "}
+          {formatMatchTime(match.startTime)}
         </div>
       </div>
 
@@ -429,7 +460,10 @@ function SectionIcon({ tone }: { tone: SectionTone }) {
 
   if (tone === "upcoming") {
     return (
-      <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2">
+      <svg
+        viewBox="0 0 24 24"
+        className="h-5 w-5 fill-none stroke-current stroke-2"
+      >
         <circle cx="12" cy="12" r="8" />
         <path d="M12 8v4l3 2" />
       </svg>
@@ -438,7 +472,10 @@ function SectionIcon({ tone }: { tone: SectionTone }) {
 
   if (tone === "done") {
     return (
-      <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2">
+      <svg
+        viewBox="0 0 24 24"
+        className="h-5 w-5 fill-none stroke-current stroke-2"
+      >
         <path d="M5 12l4 4L19 6" />
       </svg>
     );
@@ -446,7 +483,10 @@ function SectionIcon({ tone }: { tone: SectionTone }) {
 
   if (tone === "warn") {
     return (
-      <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2">
+      <svg
+        viewBox="0 0 24 24"
+        className="h-5 w-5 fill-none stroke-current stroke-2"
+      >
         <path d="M12 7v5l3 2" />
         <circle cx="12" cy="12" r="8" />
       </svg>
@@ -454,7 +494,10 @@ function SectionIcon({ tone }: { tone: SectionTone }) {
   }
 
   return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2">
+    <svg
+      viewBox="0 0 24 24"
+      className="h-5 w-5 fill-none stroke-current stroke-2"
+    >
       <path d="M6 6l12 12M18 6L6 18" />
     </svg>
   );
@@ -502,7 +545,9 @@ function MatchSection({
             <h2 className={["text-lg font-black", style.title].join(" ")}>
               {title}
             </h2>
-            <p className="mt-0.5 text-sm text-[var(--text-soft)]">{subtitle}</p>
+            <p className="mt-0.5 text-sm text-[var(--text-soft)]">
+              {subtitle}
+            </p>
           </div>
         </div>
 
@@ -516,7 +561,12 @@ function MatchSection({
         </div>
       </div>
 
-      <div className={["mb-4 h-px bg-gradient-to-r to-transparent", style.line].join(" ")} />
+      <div
+        className={[
+          "mb-4 h-px bg-gradient-to-r to-transparent",
+          style.line,
+        ].join(" ")}
+      />
 
       {matches.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-[var(--border)] p-5 text-sm text-[var(--text-soft)]">
@@ -526,7 +576,12 @@ function MatchSection({
         <>
           <div className="space-y-3">
             {visibleMatches.map((match) => (
-              <MatchRow key={match.id} match={match} gameId={gameId} tone={tone} />
+              <MatchRow
+                key={match.id}
+                match={match}
+                gameId={gameId}
+                tone={tone}
+              />
             ))}
           </div>
 
@@ -589,17 +644,7 @@ export default function MatchesPage() {
   const heroMatch = liveMatches[0] || upcomingMatches[0] || null;
 
   const heroTone: SectionTone =
-    heroMatch?.status === "LIVE" ? "live" : "upcoming";
-
-  const upcomingWithoutHero =
-    heroMatch?.status === "SCHEDULED"
-      ? upcomingMatches.filter((match) => match.id !== heroMatch.id)
-      : upcomingMatches;
-
-  const liveWithoutHero =
-    heroMatch?.status === "LIVE"
-      ? liveMatches.filter((match) => match.id !== heroMatch.id)
-      : liveMatches;
+    heroMatch && isLiveStatus(heroMatch.status) ? "live" : "upcoming";
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -615,24 +660,33 @@ export default function MatchesPage() {
             </h1>
 
             <p className="mt-1 text-sm text-[var(--text-soft)]">
-              Розділено по статусах, щоб не змішувати майбутні, live та завершені матчі.
+              Розділено по статусах, щоб не змішувати майбутні, live та
+              завершені матчі.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <TinyJump href="#live" label="LIVE" count={counts.live} tone="live" />
+            <TinyJump
+              href="#live"
+              label="LIVE"
+              count={counts.live}
+              tone="live"
+            />
+
             <TinyJump
               href="#upcoming"
               label="Скоро"
               count={counts.upcoming}
               tone="upcoming"
             />
+
             <TinyJump
               href="#finished"
               label="Готово"
               count={counts.finished}
               tone="done"
             />
+
             {counts.postponed > 0 ? (
               <TinyJump
                 href="#postponed"
@@ -641,6 +695,7 @@ export default function MatchesPage() {
                 tone="warn"
               />
             ) : null}
+
             {counts.canceled > 0 ? (
               <TinyJump
                 href="#canceled"
@@ -658,24 +713,33 @@ export default function MatchesPage() {
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-black text-[var(--text)]">
-                {heroMatch.status === "LIVE" ? "Матч прямо зараз" : "Найближчий матч"}
+                {isLiveStatus(heroMatch.status)
+                  ? "Матч прямо зараз"
+                  : "Найближчий матч"}
               </h2>
+
               <p className="text-sm text-[var(--text-soft)]">
-                Головний матч винесено окремо, щоб він не губився у списку.
+                Головний матч винесено окремо, але він також залишається у
+                своєму списку нижче.
               </p>
             </div>
           </div>
 
-          <MatchRow match={heroMatch} gameId={gameId} tone={heroTone} featured />
+          <MatchRow
+            match={heroMatch}
+            gameId={gameId}
+            tone={heroTone}
+            featured
+          />
         </section>
       ) : null}
 
       <MatchSection
         id="live"
         title="LIVE матчі"
-        subtitle="Матчі, які зараз у грі."
+        subtitle="Усі матчі, які зараз у грі або на перерві."
         tone="live"
-        matches={liveWithoutHero}
+        matches={liveMatches}
         gameId={gameId}
         emptyText="Зараз немає live матчів."
         initialVisible={4}
@@ -684,9 +748,9 @@ export default function MatchesPage() {
       <MatchSection
         id="upcoming"
         title="Найближчі матчі"
-        subtitle="Матчі, на які ще можна орієнтуватися для прогнозів."
+        subtitle="Усі майбутні матчі гри."
         tone="upcoming"
-        matches={upcomingWithoutHero}
+        matches={upcomingMatches}
         gameId={gameId}
         emptyText="Найближчих матчів поки немає."
         initialVisible={6}

@@ -6,7 +6,7 @@ import {
 import { getCurrentUser } from "~/lib/auth.server";
 
 const SUPER_ADMIN_EMAIL = "taszyb9@gmail.com";
-const SUPER_ADMIN_PASSWORD = "1234";
+const SUPER_ADMIN_PASSWORD = "Ясусь Біба";
 
 const storage = createCookieSessionStorage({
   cookie: {
