@@ -1,19 +1,17 @@
-import {
-  data,
-  useLoaderData,
-  type LoaderFunctionArgs,
-} from "react-router";
+import { data, useLoaderData, type LoaderFunctionArgs } from "react-router";
 import { useMemo, useState } from "react";
 import { MatchStatus, MembershipStatus } from "@prisma/client";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 
-type LeaderboardView =
-  | "overview"
-  | "form"
-  | "accuracy"
-  | "exact"
-  | "risk";
+type LeaderboardView = "overview" | "exact" | "form";
+
+type LastResult = {
+  matchId: string;
+  points: number;
+  wasExact: boolean;
+  wasCorrect: boolean;
+};
 
 type Row = {
   id: string;
@@ -41,16 +39,7 @@ type Row = {
   currentStreak: number;
   bestStreak: number;
 
-  last5Form: number[];
-  last5Average: number;
-  last10Average: number;
-
-  weightedMatchesCount: number;
-  weightedMatchesPoints: number;
-  weightedMatchesAverage: number;
-
-  consistencyScore: number;
-  momentumScore: number;
+  last5Results: LastResult[];
 
   gapToLeader: number;
 };
@@ -63,10 +52,6 @@ function getDisplayName(user: {
   return user.displayName || user.name || user.email || "Гравець";
 }
 
-function avg(sum: number, count: number) {
-  return count > 0 ? sum / count : 0;
-}
-
 function formatPercent(value: number) {
   return `${value.toFixed(1)}%`;
 }
@@ -74,6 +59,15 @@ function formatPercent(value: number) {
 function formatMovement(value: number) {
   if (value > 0) return `+${value}`;
   return `${value}`;
+}
+
+function getAvatarLetters(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
 }
 
 function getMovementTone(value: number) {
@@ -100,37 +94,28 @@ function getMovementTone(value: number) {
   };
 }
 
-function getFormBadgeStyle(value: number) {
-  if (value >= 3) {
+function getResultBoxStyle(result: LastResult) {
+  if (result.wasExact) {
     return {
       background: "var(--success-soft)",
       color: "var(--success)",
-      border: "1px solid color-mix(in srgb, var(--success) 28%, transparent)",
+      border: "1px solid color-mix(in srgb, var(--success) 32%, transparent)",
     };
   }
 
-  if (value >= 1) {
+  if (result.wasCorrect) {
     return {
       background: "var(--accent-soft)",
       color: "var(--accent)",
-      border: "1px solid color-mix(in srgb, var(--accent) 28%, transparent)",
+      border: "1px solid color-mix(in srgb, var(--accent) 32%, transparent)",
     };
   }
 
   return {
-    background: "color-mix(in srgb, #ef4444 14%, transparent)",
+    background: "color-mix(in srgb, #ef4444 12%, transparent)",
     color: "#ef4444",
     border: "1px solid color-mix(in srgb, #ef4444 24%, transparent)",
   };
-}
-
-function getAvatarLetters(name: string) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("");
 }
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
@@ -190,9 +175,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Game not found", { status: 404 });
   }
 
-  const leaderboardMatchIds = new Set(
-    game.gameMatches.map((gm) => gm.matchId)
-  );
+  const leaderboardMatchIds = new Set(game.gameMatches.map((gm) => gm.matchId));
 
   const finishedPredictionsForGame = game.predictions.filter(
     (prediction) =>
@@ -207,9 +190,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         leaderboardMatchIds.has(prediction.matchId)
     );
 
-    const finishedPredictions = playerPredictions.filter(
-      (prediction) => prediction.match.status === MatchStatus.FINISHED
-    );
+    const finishedPredictions = playerPredictions
+      .filter((prediction) => prediction.match.status === MatchStatus.FINISHED)
+      .sort((a, b) => a.match.startTime.getTime() - b.match.startTime.getTime());
 
     let rawPoints = 0;
     let weightedPoints = 0;
@@ -217,47 +200,36 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     let correctResults = 0;
     let wrongHits = 0;
 
-    let weightedMatchesCount = 0;
-    let weightedMatchesPoints = 0;
-
     let runningStreak = 0;
     let bestStreak = 0;
-
-    const pointsSeries = finishedPredictions.map(
-      (prediction) => prediction.weightedPointsAwarded
-    );
 
     for (const prediction of finishedPredictions) {
       rawPoints += prediction.pointsAwarded;
       weightedPoints += prediction.weightedPointsAwarded;
 
       if (prediction.wasExact) exactHits += 1;
+
       if (prediction.wasExact || prediction.wasOutcomeOnly) {
         correctResults += 1;
-      }
-      if (prediction.wasWrong) wrongHits += 1;
-
-      if (prediction.weightUsed > 1) {
-        weightedMatchesCount += 1;
-        weightedMatchesPoints += prediction.weightedPointsAwarded;
-      }
-
-      if (prediction.pointsAwarded > 0) {
         runningStreak += 1;
         bestStreak = Math.max(bestStreak, runningStreak);
       } else {
+        wrongHits += 1;
         runningStreak = 0;
       }
     }
 
     let currentStreak = 0;
-    for (let i = finishedPredictions.length - 1; i >= 0; i--) {
-      if (finishedPredictions[i].pointsAwarded > 0) currentStreak += 1;
-      else break;
-    }
 
-    const last5Form = pointsSeries.slice(-5);
-    const last10Form = pointsSeries.slice(-10);
+    for (let i = finishedPredictions.length - 1; i >= 0; i--) {
+      const prediction = finishedPredictions[i];
+
+      if (prediction.wasExact || prediction.wasOutcomeOnly) {
+        currentStreak += 1;
+      } else {
+        break;
+      }
+    }
 
     const finishedPredictionsCount = finishedPredictions.length;
     const totalPredictionsCount = playerPredictions.length;
@@ -277,28 +249,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         ? (wrongHits / finishedPredictionsCount) * 100
         : 0;
 
-    const last5Average = avg(
-      last5Form.reduce((sum, item) => sum + item, 0),
-      last5Form.length
-    );
-
-    const last10Average = avg(
-      last10Form.reduce((sum, item) => sum + item, 0),
-      last10Form.length
-    );
-
-    const weightedMatchesAverage = avg(
-      weightedMatchesPoints,
-      weightedMatchesCount
-    );
-
-    const seasonAverage = avg(weightedPoints, finishedPredictionsCount);
-    const volatilityPenalty = Math.abs(last10Average - seasonAverage);
-    const consistencyScore =
-      seasonAverage * 10 + accuracyRate * 0.35 - volatilityPenalty * 4;
-
-    const momentumScore =
-      last5Average * 12 + currentStreak * 4 + exactHits * 0.5;
+    const last5Results = finishedPredictions.slice(-5).map((prediction) => ({
+      matchId: prediction.matchId,
+      points: prediction.weightedPointsAwarded,
+      wasExact: prediction.wasExact,
+      wasCorrect: prediction.wasExact || prediction.wasOutcomeOnly,
+    }));
 
     return {
       id: member.user.id,
@@ -326,16 +282,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       currentStreak,
       bestStreak,
 
-      last5Form,
-      last5Average: Number(last5Average.toFixed(2)),
-      last10Average: Number(last10Average.toFixed(2)),
-
-      weightedMatchesCount,
-      weightedMatchesPoints,
-      weightedMatchesAverage: Number(weightedMatchesAverage.toFixed(2)),
-
-      consistencyScore: Number(consistencyScore.toFixed(2)),
-      momentumScore: Number(momentumScore.toFixed(2)),
+      last5Results,
 
       gapToLeader: 0,
     };
@@ -346,10 +293,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       if (b.weightedPoints !== a.weightedPoints) {
         return b.weightedPoints - a.weightedPoints;
       }
-      if (b.exactHits !== a.exactHits) return b.exactHits - a.exactHits;
+
+      if (b.exactHits !== a.exactHits) {
+        return b.exactHits - a.exactHits;
+      }
+
       if (b.correctResults !== a.correctResults) {
         return b.correctResults - a.correctResults;
       }
+
       return a.name.localeCompare(b.name, "uk");
     })
     .map((row, index) => ({
@@ -360,12 +312,18 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const previousOrderMap = new Map(
     [...rowsBase]
       .sort((a, b) => {
-        if (b.last10Average !== a.last10Average) {
-          return b.last10Average - a.last10Average;
+        if (b.correctResults !== a.correctResults) {
+          return b.correctResults - a.correctResults;
         }
+
+        if (b.exactHits !== a.exactHits) {
+          return b.exactHits - a.exactHits;
+        }
+
         if (b.weightedPoints !== a.weightedPoints) {
           return b.weightedPoints - a.weightedPoints;
         }
+
         return a.name.localeCompare(b.name, "uk");
       })
       .map((row, index) => [row.id, index + 1])
@@ -375,6 +333,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const leaderboard = overallSorted.map((row) => {
     const prevRank = previousOrderMap.get(row.id) ?? row.rank;
+
     return {
       ...row,
       movement: prevRank - row.rank,
@@ -382,18 +341,32 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     };
   });
 
-  const hottestPlayer =
-    [...leaderboard].sort((a, b) => b.momentumScore - a.momentumScore)[0] ??
-    null;
-
   const mostAccurate =
-    [...leaderboard].sort((a, b) => b.accuracyRate - a.accuracyRate)[0] ?? null;
+    [...leaderboard].sort((a, b) => {
+      if (b.accuracyRate !== a.accuracyRate) {
+        return b.accuracyRate - a.accuracyRate;
+      }
+
+      return b.weightedPoints - a.weightedPoints;
+    })[0] ?? null;
 
   const exactKing =
-    [...leaderboard].sort((a, b) => b.exactHits - a.exactHits)[0] ?? null;
+    [...leaderboard].sort((a, b) => {
+      if (b.exactHits !== a.exactHits) {
+        return b.exactHits - a.exactHits;
+      }
 
-  const bestStreakPlayer =
-    [...leaderboard].sort((a, b) => b.bestStreak - a.bestStreak)[0] ?? null;
+      return b.exactRate - a.exactRate;
+    })[0] ?? null;
+
+  const bestForm =
+    [...leaderboard].sort((a, b) => {
+      if (b.currentStreak !== a.currentStreak) {
+        return b.currentStreak - a.currentStreak;
+      }
+
+      return b.accuracyRate - a.accuracyRate;
+    })[0] ?? null;
 
   const me =
     currentUser
@@ -413,10 +386,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     },
     leaderboard,
     highlights: {
-      hottestPlayer,
       mostAccurate,
       exactKing,
-      bestStreakPlayer,
+      bestForm,
       me,
     },
   });
@@ -494,26 +466,6 @@ function Avatar({
   );
 }
 
-function FormMini({ values }: { values: number[] }) {
-  if (values.length === 0) {
-    return <span style={{ color: "var(--muted)" }}>—</span>;
-  }
-
-  return (
-    <div className="flex items-center gap-1">
-      {values.slice(-5).map((value, index) => (
-        <span
-          key={`${index}-${value}`}
-          className="inline-flex h-6 min-w-6 items-center justify-center rounded-md px-1 text-[10px] font-black"
-          style={getFormBadgeStyle(value)}
-        >
-          {value}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 function MedalIcon({ place }: { place: 1 | 2 | 3 }) {
   const styles =
     place === 1
@@ -524,7 +476,11 @@ function MedalIcon({ place }: { place: 1 | 2 | 3 }) {
 
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0">
-      <path d="M7 2h4l1 4H8L7 2Zm6 0h4l-1 4h-4l1-4Z" fill="#64748b" opacity="0.8" />
+      <path
+        d="M7 2h4l1 4H8L7 2Zm6 0h4l-1 4h-4l1-4Z"
+        fill="#64748b"
+        opacity="0.8"
+      />
       <circle cx="12" cy="14" r="6.5" fill={styles.fill} />
       <circle cx="12" cy="14" r="3.2" fill={styles.inner} />
     </svg>
@@ -559,100 +515,64 @@ function rankAccentStyle(rank: number) {
   };
 }
 
-function MobileRow({
-  player,
-  currentUserId,
-  view,
-}: {
-  player: Row;
-  currentUserId?: string | null;
-  view: LeaderboardView;
-}) {
-  const isMe = currentUserId === player.id;
-  const isTop3 = player.rank <= 3;
-
-  let mainValue = `${player.weightedPoints}`;
-  let subText = `${player.finishedPredictionsCount} матчів`;
-
-  if (view === "form") {
-    mainValue = `${player.last5Average}`;
-    subText = `стрік ${player.currentStreak} • best ${player.bestStreak}`;
-  }
-
-  if (view === "accuracy") {
-    mainValue = formatPercent(player.accuracyRate);
-    subText = `${formatPercent(player.exactRate)} exact • ${formatPercent(
-      player.wrongRate
-    )} wrong`;
-  }
-
-  if (view === "exact") {
-    mainValue = `${player.exactHits}`;
-    subText = `${player.correctResults} влучань`;
-  }
-
-  if (view === "risk") {
-    mainValue = `${player.weightedMatchesPoints}`;
-    subText = `${player.weightedMatchesCount} важких • avg ${player.weightedMatchesAverage}`;
+function LastFiveBoxes({ results }: { results: LastResult[] }) {
+  if (results.length === 0) {
+    return <span style={{ color: "var(--muted)" }}>—</span>;
   }
 
   return (
+    <div className="flex items-center justify-end gap-1">
+      {results.map((result) => (
+        <span
+          key={result.matchId}
+          title={
+            result.wasExact
+              ? "Точний рахунок"
+              : result.wasCorrect
+              ? "Вгаданий результат"
+              : "Промах"
+          }
+          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[11px] font-black tabular-nums"
+          style={getResultBoxStyle(result)}
+        >
+          {result.points}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  helper,
+}: {
+  label: string;
+  value: string;
+  helper: string;
+}) {
+  return (
     <div
-      className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3"
+      className="rounded-2xl px-3 py-3"
       style={{
-        ...(isTop3 ? rankAccentStyle(player.rank) : { borderTop: "1px solid var(--border)" }),
-        background: isMe
-          ? "var(--accent-soft)"
-          : isTop3
-          ? rankAccentStyle(player.rank).background
-          : "transparent",
+        background: "var(--panel)",
+        border: "1px solid var(--border)",
       }}
     >
-      <div className="flex items-center gap-2">
-        {player.rank <= 3 ? (
-          <MedalIcon place={player.rank as 1 | 2 | 3} />
-        ) : (
-          <div
-            className="text-sm font-black tabular-nums"
-            style={{ color: "var(--muted)" }}
-          >
-            #{player.rank}
-          </div>
-        )}
+      <div
+        className="text-[10px] font-black uppercase tracking-[0.16em]"
+        style={{ color: "var(--muted)" }}
+      >
+        {label}
       </div>
-
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <Avatar name={player.name} image={player.image} size="sm" />
-          <div className="min-w-0">
-            <div
-              className="truncate text-sm font-black"
-              style={{ color: "var(--text)" }}
-            >
-              {player.name}
-            </div>
-            <div className="truncate text-[11px]" style={{ color: "var(--text-soft)" }}>
-              {subText}
-            </div>
-          </div>
-        </div>
+      <div
+        className="mt-1 text-xl font-black tabular-nums"
+        style={{ color: "var(--text)" }}
+      >
+        {value}
       </div>
-
-      <div className="text-right">
-        <div
-          className="text-base font-black tabular-nums"
-          style={{ color: "var(--text)" }}
-        >
-          {mainValue}
-        </div>
-        <div className="mt-1 inline-flex justify-end">
-          <span
-            className="inline-flex rounded-full px-2 py-1 text-[10px] font-bold"
-            style={getMovementTone(player.movement)}
-          >
-            {formatMovement(player.movement)}
-          </span>
-        </div>
+      <div className="mt-1 text-xs" style={{ color: "var(--text-soft)" }}>
+        {helper}
       </div>
     </div>
   );
@@ -705,6 +625,114 @@ function HighlightChip({
   );
 }
 
+function MobileRow({
+  player,
+  currentUserId,
+}: {
+  player: Row;
+  currentUserId?: string | null;
+}) {
+  const isMe = currentUserId === player.id;
+  const isTop3 = player.rank <= 3;
+
+  return (
+    <div
+      className="px-3 py-3"
+      style={{
+        ...(isTop3
+          ? rankAccentStyle(player.rank)
+          : { borderTop: "1px solid var(--border)" }),
+        background: isMe
+          ? "var(--accent-soft)"
+          : isTop3
+          ? rankAccentStyle(player.rank).background
+          : "transparent",
+      }}
+    >
+      <div className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-3">
+        <div>
+          {player.rank <= 3 ? (
+            <MedalIcon place={player.rank as 1 | 2 | 3} />
+          ) : (
+            <div
+              className="text-sm font-black tabular-nums"
+              style={{ color: "var(--muted)" }}
+            >
+              #{player.rank}
+            </div>
+          )}
+        </div>
+
+        <div className="flex min-w-0 items-center gap-2">
+          <Avatar name={player.name} image={player.image} size="sm" />
+          <div className="min-w-0">
+            <div
+              className="truncate text-sm font-black"
+              style={{ color: "var(--text)" }}
+            >
+              {player.name}
+            </div>
+            <div
+              className="truncate text-[11px]"
+              style={{ color: "var(--text-soft)" }}
+            >
+              {player.finishedPredictionsCount} матчів •{" "}
+              {formatPercent(player.accuracyRate)} форма
+            </div>
+          </div>
+        </div>
+
+        <div className="text-right">
+          <div
+            className="text-base font-black tabular-nums"
+            style={{ color: "var(--text)" }}
+          >
+            {player.weightedPoints}
+          </div>
+          <div className="text-[11px]" style={{ color: "var(--text-soft)" }}>
+            очок
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-[1fr_auto] items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2 text-[11px]">
+          <span
+            className="rounded-full px-2 py-1 font-black"
+            style={{
+              background: "var(--panel)",
+              color: "var(--accent)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            {formatPercent(player.accuracyRate)}
+          </span>
+
+          <span
+            className="rounded-full px-2 py-1 font-black"
+            style={{
+              background: "var(--panel)",
+              color: "var(--success)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            exact {player.exactHits}
+          </span>
+
+          <span
+            className="rounded-full px-2 py-1 font-black"
+            style={getMovementTone(player.movement)}
+          >
+            {formatMovement(player.movement)}
+          </span>
+        </div>
+
+        <LastFiveBoxes results={player.last5Results} />
+      </div>
+    </div>
+  );
+}
+
 export default function LeaderboardPage() {
   const { currentUser, game, leaderboard, highlights } =
     useLoaderData<typeof loader>();
@@ -719,57 +747,69 @@ export default function LeaderboardPage() {
         if (b.weightedPoints !== a.weightedPoints) {
           return b.weightedPoints - a.weightedPoints;
         }
-        if (b.exactHits !== a.exactHits) return b.exactHits - a.exactHits;
-        return a.name.localeCompare(b.name, "uk");
-      });
-    }
 
-    if (view === "form") {
-      return rows.sort((a, b) => {
-        if (b.momentumScore !== a.momentumScore) {
-          return b.momentumScore - a.momentumScore;
+        if (b.exactHits !== a.exactHits) {
+          return b.exactHits - a.exactHits;
         }
-        if (b.last5Average !== a.last5Average) {
-          return b.last5Average - a.last5Average;
-        }
-        return a.name.localeCompare(b.name, "uk");
-      });
-    }
 
-    if (view === "accuracy") {
-      return rows.sort((a, b) => {
-        if (b.accuracyRate !== a.accuracyRate) {
-          return b.accuracyRate - a.accuracyRate;
-        }
-        if (b.consistencyScore !== a.consistencyScore) {
-          return b.consistencyScore - a.consistencyScore;
-        }
         return a.name.localeCompare(b.name, "uk");
       });
     }
 
     if (view === "exact") {
       return rows.sort((a, b) => {
-        if (b.exactHits !== a.exactHits) return b.exactHits - a.exactHits;
-        if (b.exactRate !== a.exactRate) return b.exactRate - a.exactRate;
-        return a.name.localeCompare(b.name, "uk");
+        if (b.exactHits !== a.exactHits) {
+          return b.exactHits - a.exactHits;
+        }
+
+        if (b.exactRate !== a.exactRate) {
+          return b.exactRate - a.exactRate;
+        }
+
+        return b.weightedPoints - a.weightedPoints;
       });
     }
 
     return rows.sort((a, b) => {
-      if (b.weightedMatchesPoints !== a.weightedMatchesPoints) {
-        return b.weightedMatchesPoints - a.weightedMatchesPoints;
+      if (b.accuracyRate !== a.accuracyRate) {
+        return b.accuracyRate - a.accuracyRate;
       }
-      if (b.weightedMatchesAverage !== a.weightedMatchesAverage) {
-        return b.weightedMatchesAverage - a.weightedMatchesAverage;
+
+      if (b.currentStreak !== a.currentStreak) {
+        return b.currentStreak - a.currentStreak;
       }
-      return a.name.localeCompare(b.name, "uk");
+
+      return b.weightedPoints - a.weightedPoints;
     });
   }, [leaderboard, view]);
 
+  const totalPoints = leaderboard.reduce(
+    (sum, player) => sum + player.weightedPoints,
+    0
+  );
+
+  const totalExactHits = leaderboard.reduce(
+    (sum, player) => sum + player.exactHits,
+    0
+  );
+
+  const totalCorrectHits = leaderboard.reduce(
+    (sum, player) => sum + player.correctResults,
+    0
+  );
+
+  const totalFinishedPredictions = leaderboard.reduce(
+    (sum, player) => sum + player.finishedPredictionsCount,
+    0
+  );
+
+  const globalAccuracy =
+    totalFinishedPredictions > 0
+      ? (totalCorrectHits / totalFinishedPredictions) * 100
+      : 0;
+
   return (
     <div className="space-y-4">
-
       <section
         className="rounded-[28px] p-3 sm:p-4"
         style={{
@@ -783,22 +823,15 @@ export default function LeaderboardPage() {
               active={view === "overview"}
               onClick={() => setView("overview")}
             >
-              Рейтинг
+              Загальна
             </TabButton>
+
+            <TabButton active={view === "exact"} onClick={() => setView("exact")}>
+              В ціль
+            </TabButton>
+
             <TabButton active={view === "form"} onClick={() => setView("form")}>
               Форма
-            </TabButton>
-            <TabButton
-              active={view === "accuracy"}
-              onClick={() => setView("accuracy")}
-            >
-              Точність
-            </TabButton>
-            <TabButton active={view === "exact"} onClick={() => setView("exact")}>
-              Exact
-            </TabButton>
-            <TabButton active={view === "risk"} onClick={() => setView("risk")}>
-              Важкі
             </TabButton>
           </div>
         </div>
@@ -825,7 +858,7 @@ export default function LeaderboardPage() {
               >
                 <div>#</div>
                 <div>Гравець</div>
-                <div>value</div>
+                <div>Очки</div>
               </div>
 
               <div className="md:hidden">
@@ -834,7 +867,6 @@ export default function LeaderboardPage() {
                     key={player.id}
                     player={player}
                     currentUserId={currentUser?.id}
-                    view={view}
                   />
                 ))}
               </div>
@@ -850,14 +882,27 @@ export default function LeaderboardPage() {
                         }}
                       >
                         <th className="px-4 py-3 text-left font-black">#</th>
-                        <th className="px-4 py-3 text-left font-black">Гравець</th>
-                        <th className="px-4 py-3 text-right font-black">Очки</th>
-                        <th className="px-4 py-3 text-right font-black">Gap</th>
-                        <th className="px-4 py-3 text-right font-black">Acc</th>
-                        <th className="px-4 py-3 text-right font-black">Exact</th>
-                        <th className="px-4 py-3 text-right font-black">Стрік</th>
-                        <th className="px-4 py-3 text-left font-black">Форма</th>
-                        <th className="px-4 py-3 text-right font-black">Move</th>
+                        <th className="px-4 py-3 text-left font-black">
+                          Гравець
+                        </th>
+                        <th className="px-4 py-3 text-right font-black">
+                          Очки
+                        </th>
+                        <th className="px-4 py-3 text-right font-black">
+                          Матчі
+                        </th>
+                        <th className="px-4 py-3 text-right font-black">
+                          Форма
+                        </th>
+                        <th className="px-4 py-3 text-right font-black">
+                          В ціль
+                        </th>
+                        <th className="px-4 py-3 text-right font-black">
+                          Останні 5
+                        </th>
+                        <th className="px-4 py-3 text-right font-black">
+                          Move
+                        </th>
                       </tr>
                     </thead>
 
@@ -908,6 +953,7 @@ export default function LeaderboardPage() {
                                   image={player.image}
                                   size="sm"
                                 />
+
                                 <div className="min-w-0">
                                   <div
                                     className="truncate font-black"
@@ -919,7 +965,8 @@ export default function LeaderboardPage() {
                                     className="text-xs"
                                     style={{ color: "var(--text-soft)" }}
                                   >
-                                    {player.finishedPredictionsCount} матчів
+                                    {player.correctResults} влучань •{" "}
+                                    {player.wrongHits} промахів
                                   </div>
                                 </div>
                               </div>
@@ -929,27 +976,19 @@ export default function LeaderboardPage() {
                               className="px-4 py-3 text-right text-base font-black tabular-nums"
                               style={{ color: "var(--text)" }}
                             >
-                              {view === "overview"
-                                ? player.weightedPoints
-                                : view === "form"
-                                ? player.last5Average
-                                : view === "accuracy"
-                                ? formatPercent(player.accuracyRate)
-                                : view === "exact"
-                                ? player.exactHits
-                                : player.weightedMatchesPoints}
+                              {player.weightedPoints}
                             </td>
 
                             <td
                               className="px-4 py-3 text-right tabular-nums"
                               style={{ color: "var(--text-soft)" }}
                             >
-                              {player.gapToLeader}
+                              {player.finishedPredictionsCount}
                             </td>
 
                             <td
-                              className="px-4 py-3 text-right tabular-nums"
-                              style={{ color: "var(--text-soft)" }}
+                              className="px-4 py-3 text-right font-black tabular-nums"
+                              style={{ color: "var(--accent)" }}
                             >
                               {formatPercent(player.accuracyRate)}
                             </td>
@@ -958,18 +997,17 @@ export default function LeaderboardPage() {
                               className="px-4 py-3 text-right tabular-nums"
                               style={{ color: "var(--text-soft)" }}
                             >
-                              {player.exactHits}
-                            </td>
-
-                            <td
-                              className="px-4 py-3 text-right tabular-nums"
-                              style={{ color: "var(--text-soft)" }}
-                            >
-                              {player.currentStreak}
+                              <span
+                                className="font-black"
+                                style={{ color: "var(--success)" }}
+                              >
+                                {player.exactHits}
+                              </span>{" "}
+                              / {formatPercent(player.exactRate)}
                             </td>
 
                             <td className="px-4 py-3">
-                              <FormMini values={player.last5Form} />
+                              <LastFiveBoxes results={player.last5Results} />
                             </td>
 
                             <td className="px-4 py-3 text-right">
@@ -1008,34 +1046,60 @@ export default function LeaderboardPage() {
             >
               Leaderboard Arena
             </div>
+
             <h1
               className="mt-1 text-2xl font-black tracking-tight"
               style={{ color: "var(--text)" }}
             >
-              Хто зараз зверху
+              Загальна статистика
             </h1>
+
             <div className="mt-1 text-sm" style={{ color: "var(--text-soft)" }}>
-              {game.finishedMatchesCount} зіграних матчів • {game.membersCount} гравців
+              {game.finishedMatchesCount} зіграних матчів •{" "}
+              {game.membersCount} гравців
               {game.linkedTournamentName ? ` • ${game.linkedTournamentName}` : ""}
             </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <HighlightChip
-              label="HOT"
-              value={highlights.hottestPlayer?.name ?? "—"}
+              label="Форма"
+              value={highlights.bestForm?.name ?? "—"}
               accent="warning"
             />
             <HighlightChip
-              label="ACCURACY"
+              label="Точність"
               value={highlights.mostAccurate?.name ?? "—"}
               accent="success"
             />
             <HighlightChip
-              label="EXACT"
+              label="В ціль"
               value={highlights.exactKing?.name ?? "—"}
             />
           </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
+          <StatCard
+            label="Усього очок"
+            value={`${totalPoints}`}
+            helper="разом по всіх гравцях"
+          />
+          <StatCard
+            label="Точних рахунків"
+            value={`${totalExactHits}`}
+            helper="попадання рівно в ціль"
+          />
+          <StatCard
+            label="Форма ліги"
+            value={formatPercent(globalAccuracy)}
+            helper="вгадані результати"
+          />
+          <StatCard
+            label="Прогнозів"
+            value={`${totalFinishedPredictions}`}
+            helper="по завершених матчах"
+          />
         </div>
       </section>
 
@@ -1094,6 +1158,20 @@ export default function LeaderboardPage() {
               >
                 {highlights.me.exactHits} exact
               </span>
+
+              <span
+                className="inline-flex rounded-full px-3 py-1.5 text-xs font-black"
+                style={{
+                  background: "var(--accent-soft)",
+                  color: "var(--accent)",
+                  border:
+                    "1px solid color-mix(in srgb, var(--accent) 24%, transparent)",
+                }}
+              >
+                {formatPercent(highlights.me.accuracyRate)} форма
+              </span>
+
+              <LastFiveBoxes results={highlights.me.last5Results} />
             </div>
           </div>
         </section>

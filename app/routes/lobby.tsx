@@ -1,4 +1,13 @@
-import { Link, Form, data, useLoaderData, type LoaderFunctionArgs } from "react-router";
+import {
+  Link,
+  Form,
+  data,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+} from "react-router";
 import { useMemo, useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
@@ -187,7 +196,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       bannerUrl: game.bannerUrl ?? null,
       avatarUrl: game.avatarUrl ?? null,
       linkedTournamentName: game.linkedTournament?.name ?? null,
-      favoriteTeamName: game.favoriteTeam?.shortName || game.favoriteTeam?.name || null,
+      favoriteTeamName:
+        game.favoriteTeam?.shortName || game.favoriteTeam?.name || null,
       favoriteTeamLogo: game.favoriteTeam?.logo ?? null,
       membersCount: game._count.members,
       matchesCount: game._count.gameMatches,
@@ -195,16 +205,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
       finishedMatchesCount,
       pendingPredictionsCount,
       submittedPredictionsCount: game.predictions.length,
-      exactHitsCount: game.predictions.filter((prediction) => prediction.wasExact).length,
+      exactHitsCount: game.predictions.filter((prediction) => prediction.wasExact)
+        .length,
       nextMatch: nextMatchRaw
         ? {
             id: nextMatchRaw.match.id,
             startTime: nextMatchRaw.match.startTime.toISOString(),
             formattedStartTime: formatMatchDate(nextMatchRaw.match.startTime),
             homeTeam:
-              nextMatchRaw.match.homeTeam.shortName || nextMatchRaw.match.homeTeam.name,
+              nextMatchRaw.match.homeTeam.shortName ||
+              nextMatchRaw.match.homeTeam.name,
             awayTeam:
-              nextMatchRaw.match.awayTeam.shortName || nextMatchRaw.match.awayTeam.name,
+              nextMatchRaw.match.awayTeam.shortName ||
+              nextMatchRaw.match.awayTeam.name,
             status: nextMatchRaw.match.status,
           }
         : null,
@@ -233,6 +246,94 @@ export async function loader({ request }: LoaderFunctionArgs) {
       ),
       totalExactHits: games.reduce((sum, game) => sum + game.exactHitsCount, 0),
     } satisfies LobbyStats,
+  });
+}
+
+export async function action({ request }: ActionFunctionArgs) {
+  const currentUser = await getCurrentUser(request);
+  const formData = await request.formData();
+
+  const intent = String(formData.get("intent") || "");
+
+  if (intent !== "feedback") {
+    return data(
+      {
+        ok: false,
+        message: "Невідома дія форми.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const name = String(formData.get("name") || "").trim();
+  const email = String(formData.get("email") || "").trim();
+  const message = String(formData.get("message") || "").trim();
+
+  if (!message) {
+    return data(
+      {
+        ok: false,
+        message: "Напиши побажання або ідею.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const senderName =
+    name || currentUser?.displayName || currentUser?.name || "Не вказано";
+  const senderEmail = email || currentUser?.email || "Не вказано";
+
+  if (!process.env.RESEND_API_KEY) {
+    console.log("Feedback form message:", {
+      senderName,
+      senderEmail,
+      message,
+    });
+
+    return data({
+      ok: false,
+      message:
+        "Форма готова, але треба додати RESEND_API_KEY в .env, щоб лист реально відправлявся.",
+    });
+  }
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from:
+        process.env.FEEDBACK_FROM_EMAIL ||
+        "Match Predictor <onboarding@resend.dev>",
+      to: ["taszyb9@gmail.com"],
+      subject: "Побажання до Match Predictor",
+      text: `
+Нове побажання до гри
+
+Імʼя: ${senderName}
+Email: ${senderEmail}
+
+Повідомлення:
+${message}
+      `.trim(),
+    }),
+  });
+
+  if (!response.ok) {
+    return data(
+      {
+        ok: false,
+        message: "Не вдалося відправити лист. Спробуй ще раз.",
+      },
+      { status: 500 }
+    );
+  }
+
+  return data({
+    ok: true,
+    message: "Дякую! Побажання відправлено.",
   });
 }
 
@@ -631,7 +732,13 @@ function NextMatchPanel({
   );
 }
 
-function CompactGameRow({ game, type }: { game: LobbyGame; type: "league" | "solo" }) {
+function CompactGameRow({
+  game,
+  type,
+}: {
+  game: LobbyGame;
+  type: "league" | "solo";
+}) {
   const initials = game.name
     .split(" ")
     .map((word) => word[0])
@@ -772,29 +879,238 @@ function CreateCard({
 }
 
 function RulesTab() {
+  const actionData = useActionData<typeof action>();
+  const navigation = useNavigation();
+  const isSubmitting = navigation.state === "submitting";
+
   return (
-    <section className="theme-panel rounded-[1.75rem] p-4 sm:p-5">
-      <div className="mb-4 flex items-center gap-3">
-        <div className="theme-accent-bg flex h-12 w-12 items-center justify-center rounded-2xl">
-          <IconBook className="h-6 w-6" />
+    <section className="grid gap-4">
+      <div className="theme-panel rounded-[1.75rem] p-4 sm:p-5">
+        <div className="mb-5 flex items-center gap-3">
+          <div className="theme-accent-bg flex h-12 w-12 items-center justify-center rounded-2xl">
+            <IconBook className="h-6 w-6" />
+          </div>
+
+          <div>
+            <h2 className="text-xl font-black">Правила гри</h2>
+            <p className="theme-muted text-sm">
+              Повний гайд по лігах, прогнозах, балах і вкладках.
+            </p>
+          </div>
         </div>
 
-        <div>
-          <h2 className="text-xl font-black">Правила гри</h2>
-          <p className="theme-muted text-sm">Коротко, без зайвого тексту.</p>
+        <div className="grid gap-3 lg:grid-cols-2">
+          <RuleSection
+            icon={<IconPlus />}
+            title="Як створити гру"
+            items={[
+              "Перейди у вкладку «Створити».",
+              "Обери «Дружня ліга», якщо хочеш грати з друзями.",
+              "Після створення гри відкриється окрема сторінка ліги.",
+              "У грі можна мати власну назву, учасників, матчі та таблицю.",
+              "Інші гравці можуть приєднатися за кодом запрошення.",
+            ]}
+          />
+
+          <RuleSection
+            icon={<IconShield />}
+            title="Що дає роль адміна"
+            items={[
+              "Адмін керує грою та її налаштуваннями.",
+              "Може додавати, переглядати й налаштовувати матчі.",
+              "Може стежити за прогнозами, результатами та активністю учасників.",
+              "Може відкривати адмін-панель конкретної гри.",
+              "У майбутньому адмін отримає більше інструментів для керування лігою.",
+            ]}
+          />
+
+          <RuleSection
+            icon={<IconTrophy />}
+            title="Нарахування балів"
+            items={[
+              "Точний рахунок — 3 бали.",
+              "Правильний результат без точного рахунку — 1 бал.",
+              "Неправильний прогноз — 0 балів.",
+              "Якщо для раунду задана вага, бали можуть множитися на вагу раунду.",
+              "Основна таблиця лідерів рахується за результатами завершених матчів.",
+            ]}
+          />
+
+          <RuleSection
+            icon={<IconBall />}
+            title="Детальний предікт"
+            items={[
+              "Детальний предікт уже працює візуально.",
+              "Там можна прогнозувати схеми, позиції, MVP, авторів голів та інші деталі.",
+              "Логіка нарахування балів за детальний предікт ще в процесі розробки.",
+              "Поки основні бали нараховуються за звичайний прогноз рахунку.",
+            ]}
+          />
+
+          <RuleSection
+            icon={<IconStar />}
+            title="Соло режим"
+            items={[
+              "Соло режим поки що в розробці.",
+              "Ідея режиму — особиста карʼєра за улюблений клуб.",
+              "Переживати важливі матчі улюбленрї команди з більшим інтересом.",
+              "Зараз основний стабільний режим — дружні ліги.",
+            ]}
+          />
+
+          <RuleSection
+            icon={<IconLive />}
+            title="Live і закриття прогнозів"
+            items={[
+              "До старту матчу можна зробити прогноз.",
+              "Після старту матчу прогноз закривається.",
+              "Live-матчі показують поточний стан гри.",
+              "Після завершення матчу система рахує очки.",
+            ]}
+          />
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <RuleCard icon={<IconTrophy />} title="3 бали" text="Точний рахунок." />
-        <RuleCard icon={<IconCheck />} title="1 бал" text="Правильний результат." />
-        <RuleCard
-          icon={<IconLive />}
-          title="Live"
-          text="Матч закрився — прогноз не змінюємо."
-        />
+      <div className="theme-panel rounded-[1.75rem] p-4 sm:p-5">
+        <div className="mb-4">
+          <div className="theme-muted text-[10px] font-black uppercase tracking-[0.18em]">
+            Вкладки гри
+          </div>
+          <h3 className="mt-1 text-xl font-black">Що є всередині гри</h3>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <TabInfoCard
+            title="Головна"
+            text="Короткий огляд гри, найближчі матчі, швидкі дії та основна активність."
+          />
+          <TabInfoCard
+            title="Матчі"
+            text="Список матчів ліги. Тут можна бачити заплановані, live та завершені поєдинки."
+          />
+          <TabInfoCard
+            title="Прогноз"
+            text="Основне місце, де гравець ставить рахунок на матч. Саме цей прогноз дає головні бали."
+          />
+          <TabInfoCard
+            title="Детальний предікт"
+            text="Розширений прогноз зі схемами, MVP, авторами голів та додатковими деталями. Бали ще допрацьовуються."
+          />
+          <TabInfoCard
+            title="Лідерборд"
+            text="Таблиця гравців: очки, форма, точні попадання, останні результати й позиції."
+          />
+          <TabInfoCard
+            title="Учасники"
+            text="Список гравців ліги. Тут можна бачити, хто бере участь у грі."
+          />
+          <TabInfoCard
+            title="Налаштування"
+            text="Параметри гри, код запрошення, доступи та керування лігою."
+          />
+          <TabInfoCard
+            title="Адмін"
+            text="Доступний для адмінів гри. Тут можна керувати матчами, результатами й учасниками."
+          />
+        </div>
+      </div>
+
+      <div className="theme-panel-strong rounded-[1.75rem] p-4 sm:p-5">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="theme-accent-bg flex h-12 w-12 items-center justify-center rounded-2xl">
+            <IconCheck className="h-6 w-6" />
+          </div>
+
+          <div>
+            <h3 className="text-xl font-black">Є ідея або побажання?</h3>
+            <p className="theme-muted text-sm">
+              Напиши, що додати або покращити. Повідомлення прийде на пошту.
+            </p>
+          </div>
+        </div>
+
+        <Form method="post" className="grid gap-3">
+          <input type="hidden" name="intent" value="feedback" />
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input
+              name="name"
+              placeholder="Твоє імʼя"
+              className="theme-card-highlight rounded-2xl px-4 py-3 text-sm outline-none"
+            />
+
+            <input
+              name="email"
+              type="email"
+              placeholder="Email для відповіді"
+              className="theme-card-highlight rounded-2xl px-4 py-3 text-sm outline-none"
+            />
+          </div>
+
+          <textarea
+            name="message"
+            required
+            rows={5}
+            placeholder="Що хочеш додати, змінити або покращити?"
+            className="theme-card-highlight resize-none rounded-2xl px-4 py-3 text-sm outline-none"
+          />
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="theme-primary-button rounded-2xl px-5 py-3 text-sm font-black disabled:opacity-60"
+          >
+            {isSubmitting ? "Відправляю..." : "Відправити побажання"}
+          </button>
+
+          {actionData?.message ? (
+            <div
+              className={[
+                "rounded-2xl px-4 py-3 text-sm font-bold",
+                actionData.ok ? "theme-success-bg" : "theme-card-highlight",
+              ].join(" ")}
+            >
+              {actionData.message}
+            </div>
+          ) : null}
+        </Form>
       </div>
     </section>
+  );
+}
+
+function RuleSection({
+  icon,
+  title,
+  items,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  items: string[];
+}) {
+  return (
+    <div className="theme-card-highlight rounded-[1.35rem] p-4">
+      <div className="theme-accent mb-4 h-9 w-9">{icon}</div>
+      <h3 className="text-lg font-black">{title}</h3>
+
+      <ul className="theme-text-soft mt-3 space-y-2 text-sm leading-6">
+        {items.map((item) => (
+          <li key={item} className="flex gap-2">
+            <span className="theme-accent mt-1 shrink-0">•</span>
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function TabInfoCard({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="theme-card-highlight rounded-[1.25rem] p-4">
+      <h4 className="font-black">{title}</h4>
+      <p className="theme-text-soft mt-2 text-sm leading-6">{text}</p>
+    </div>
   );
 }
 
@@ -1067,7 +1383,15 @@ function IconArrow({ className }: { className?: string }) {
 function IconCalendar({ className }: { className?: string }) {
   return (
     <SvgIcon className={className}>
-      <rect x="4" y="5" width="16" height="15" rx="3" stroke="currentColor" strokeWidth="2" />
+      <rect
+        x="4"
+        y="5"
+        width="16"
+        height="15"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
       <path
         d="M8 3V7M16 3V7M4 10H20"
         stroke="currentColor"

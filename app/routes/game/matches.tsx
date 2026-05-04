@@ -54,10 +54,6 @@ function isLiveStatus(status: string) {
   return LIVE_STATUSES.includes(status);
 }
 
-function isUpcomingStatus(status: string) {
-  return UPCOMING_STATUSES.includes(status);
-}
-
 function isFinishedStatus(status: string) {
   return FINISHED_STATUSES.includes(status);
 }
@@ -223,6 +219,7 @@ function getTeamLogoSrc(team: TeamLike) {
 
 function getTournamentLogoSrc(tournament?: TournamentLike | null) {
   if (!tournament?.logo) return null;
+
   return tournament.logo.startsWith("/")
     ? tournament.logo
     : `/teams/${tournament.logo}.svg`;
@@ -237,48 +234,56 @@ function getSectionStyle(tone: SectionTone) {
     case "live":
       return {
         panel: "border-red-400/20 bg-red-500/[0.045]",
-        title: "text-red-300",
-        badge: "bg-red-500/15 text-red-200 ring-red-400/20",
-        line: "from-red-400/50",
+        title: "text-[var(--danger-readable)]",
+        badge:
+          "bg-[var(--danger-soft)] text-[var(--danger-readable)] ring-[color-mix(in_srgb,var(--danger)_28%,transparent)]",
+        line: "from-[var(--danger)]",
         row: "border-red-400/15 hover:bg-red-500/[0.08]",
-        score: "text-red-200",
+        score: "text-[var(--danger-readable)]",
       };
+
     case "upcoming":
       return {
-        panel: "border-[var(--accent)]/20 bg-[var(--accent-soft)]/40",
-        title: "text-[var(--accent)]",
+        panel: "border-[color-mix(in_srgb,var(--accent)_22%,transparent)] bg-[var(--accent-soft)]",
+        title: "text-[var(--accent-text)]",
         badge:
-          "bg-[var(--accent-soft)] text-[var(--accent)] ring-[var(--accent)]/20",
-        line: "from-[var(--accent)]/50",
-        row: "border-[var(--accent)]/15 hover:bg-[var(--accent-soft)]",
+          "bg-[var(--accent-soft)] text-[var(--accent-text)] ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]",
+        line: "from-[var(--accent)]",
+        row: "border-[color-mix(in_srgb,var(--accent)_16%,transparent)] hover:bg-[var(--accent-soft)]",
         score: "text-[var(--text)]",
       };
+
     case "done":
       return {
         panel: "border-emerald-400/15 bg-emerald-500/[0.035]",
-        title: "text-emerald-300",
-        badge: "bg-emerald-500/10 text-emerald-200 ring-emerald-400/20",
-        line: "from-emerald-400/40",
+        title: "text-[var(--success-readable)]",
+        badge:
+          "bg-[var(--success-soft)] text-[var(--success-readable)] ring-[color-mix(in_srgb,var(--success)_28%,transparent)]",
+        line: "from-[var(--success)]",
         row: "border-emerald-400/10 opacity-85 hover:opacity-100 hover:bg-emerald-500/[0.05]",
-        score: "text-emerald-200",
+        score: "text-[var(--success-readable)]",
       };
-    case "warn":
-      return {
-        panel: "border-amber-400/15 bg-amber-500/[0.04]",
-        title: "text-amber-300",
-        badge: "bg-amber-500/10 text-amber-200 ring-amber-400/20",
-        line: "from-amber-400/40",
-        row: "border-amber-400/10 hover:bg-amber-500/[0.06]",
-        score: "text-amber-200",
-      };
+
+      case "warn":
+        return {
+          panel: "border-amber-400/15 bg-amber-500/[0.04]",
+          title: "text-[var(--warning-readable)]",
+          badge:
+            "bg-[var(--warning-soft)] text-[var(--warning-readable)] ring-[color-mix(in_srgb,var(--warning)_28%,transparent)]",
+          line: "from-[var(--warning)]",
+          row: "border-amber-400/10 hover:bg-amber-500/[0.06]",
+          score: "text-[var(--warning-readable)]",
+        };
+
     case "muted":
       return {
-        panel: "border-zinc-400/10 bg-zinc-500/[0.035]",
-        title: "text-zinc-400",
-        badge: "bg-zinc-500/10 text-zinc-300 ring-zinc-400/15",
-        line: "from-zinc-400/25",
-        row: "border-zinc-400/10 opacity-70 hover:opacity-90 hover:bg-zinc-500/[0.05]",
-        score: "text-zinc-300",
+        panel: "border-[var(--border)] bg-[var(--card-highlight)]",
+        title: "text-[var(--muted)]",
+        badge:
+          "bg-[var(--card-highlight)] text-[var(--text-soft)] ring-[var(--border)]",
+        line: "from-[var(--muted)]",
+        row: "border-[var(--border)] opacity-75 hover:opacity-95 hover:bg-[var(--card-highlight)]",
+        score: "text-[var(--text-soft)]",
       };
   }
 }
@@ -325,6 +330,7 @@ function TeamLine({
         <div className="truncate text-sm font-black text-[var(--text)]">
           {team.shortName || team.name}
         </div>
+
         <div className="truncate text-[10px] text-[var(--muted)]">
           {team.name}
         </div>
@@ -343,7 +349,7 @@ function MatchMeta({ match }: { match: MatchItem }) {
     <div className="flex min-w-0 items-center gap-2 text-[10px] text-[var(--muted)]">
       {match.tournament ? (
         <div className="flex min-w-0 items-center gap-1.5">
-          <div className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/90">
+          <div className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/90 ring-1 ring-black/5">
             {logoSrc ? (
               <img
                 src={logoSrc}
@@ -411,6 +417,7 @@ function MatchRow({
       to={`/games/${gameId}/matches/${match.id}`}
       className={[
         "block rounded-3xl border p-3 transition sm:p-4",
+        "bg-[var(--panel)] hover:border-[var(--border-strong)]",
         style.row,
         featured ? "shadow-lg shadow-black/10" : "",
       ].join(" ")}
@@ -435,7 +442,9 @@ function MatchRow({
               featured ? "text-3xl sm:text-4xl" : "text-2xl",
             ].join(" ")}
           >
-            {hasScore ? `${match.homeScore ?? 0}:${match.awayScore ?? 0}` : "VS"}
+            {hasScore
+              ? `${match.homeScore ?? 0}:${match.awayScore ?? 0}`
+              : "VS"}
           </div>
 
           <div className="mt-1">
@@ -545,6 +554,7 @@ function MatchSection({
             <h2 className={["text-lg font-black", style.title].join(" ")}>
               {title}
             </h2>
+
             <p className="mt-0.5 text-sm text-[var(--text-soft)]">
               {subtitle}
             </p>
@@ -563,13 +573,13 @@ function MatchSection({
 
       <div
         className={[
-          "mb-4 h-px bg-gradient-to-r to-transparent",
+          "mb-4 h-px bg-gradient-to-r to-transparent opacity-60",
           style.line,
         ].join(" ")}
       />
 
       {matches.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-[var(--border)] p-5 text-sm text-[var(--text-soft)]">
+        <div className="rounded-3xl border border-dashed border-[var(--border)] bg-[var(--panel)] p-5 text-sm text-[var(--text-soft)]">
           {emptyText}
         </div>
       ) : (
@@ -590,7 +600,7 @@ function MatchSection({
               type="button"
               onClick={() => setVisible((prev) => prev + 4)}
               className={[
-                "mt-4 rounded-2xl px-4 py-3 text-xs font-black uppercase tracking-[0.14em] transition hover:bg-[var(--panel-strong)]",
+                "mt-4 rounded-2xl border border-[var(--border)] bg-[var(--panel)] px-4 py-3 text-xs font-black uppercase tracking-[0.14em] transition hover:bg-[var(--panel-strong)]",
                 style.title,
               ].join(" ")}
             >

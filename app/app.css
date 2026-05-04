@@ -48,6 +48,10 @@
 
   --table-hover: rgba(255, 255, 255, 0.045);
   --card-highlight: rgba(255, 255, 255, 0.035);
+  
+  --success-readable: #86efac;
+  --warning-readable: #fcd34d;
+  --danger-readable: #fca5a5;
 }
 
 /* UEFA CHAMPIONS LEAGUE */
@@ -236,48 +240,48 @@
 
 /* LIGHT */
 :root[data-theme="light"] {
-  --bg: #edf2f8;
-  --bg-soft: #f7f9fd;
+  --bg: #eef3f8;
+  --bg-soft: #f8fafc;
   --bg-elevated: #ffffff;
 
-  --bg-gradient-start: #eaf1ff;
+  --bg-gradient-start: #e8f0ff;
   --bg-gradient-mid: #f8fbff;
-  --bg-gradient-end: #edf2f8;
+  --bg-gradient-end: #eef3f8;
 
-  --panel: rgba(255, 255, 255, 0.82);
-  --panel-strong: rgba(255, 255, 255, 0.96);
-  --panel-solid: rgba(255, 255, 255, 0.98);
+  --panel: rgba(255, 255, 255, 0.88);
+  --panel-strong: rgba(255, 255, 255, 0.98);
+  --panel-solid: #ffffff;
 
-  --border: rgba(15, 23, 42, 0.09);
-  --border-strong: rgba(15, 23, 42, 0.16);
+  --border: rgba(15, 23, 42, 0.12);
+  --border-strong: rgba(15, 23, 42, 0.22);
 
   --text: #0f172a;
-  --text-soft: rgba(15, 23, 42, 0.72);
-  --muted: rgba(15, 23, 42, 0.5);
+  --text-soft: rgba(15, 23, 42, 0.78);
+  --muted: rgba(15, 23, 42, 0.58);
 
-  --accent: #1d4ed8;
-  --accent-strong: #2563eb;
-  --accent-soft: rgba(29, 78, 216, 0.12);
-  --accent-text: #1d4ed8;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-soft: rgba(37, 99, 235, 0.12);
+  --accent-text: #1e40af;
   --accent-button-text: #ffffff;
 
-  --warning: #d97706;
-  --warning-soft: rgba(217, 119, 6, 0.14);
-  --warning-text: #ffffff;
+  --warning: #b45309;
+  --warning-soft: rgba(245, 158, 11, 0.16);
+  --warning-text: #78350f;
 
-  --success: #16a34a;
-  --success-soft: rgba(22, 163, 74, 0.14);
-  --success-text: #ffffff;
+  --success: #15803d;
+  --success-soft: rgba(22, 163, 74, 0.16);
+  --success-text: #14532d;
 
-  --danger: #dc2626;
+  --danger: #b91c1c;
   --danger-soft: rgba(220, 38, 38, 0.14);
-  --danger-text: #ffffff;
+  --danger-text: #7f1d1d;
 
-  --hero-glow: rgba(29, 78, 216, 0.15);
-  --hero-glow-2: rgba(14, 165, 233, 0.09);
+  --hero-glow: rgba(37, 99, 235, 0.14);
+  --hero-glow-2: rgba(14, 165, 233, 0.08);
 
-  --table-hover: rgba(15, 23, 42, 0.045);
-  --card-highlight: rgba(15, 23, 42, 0.03);
+  --table-hover: rgba(15, 23, 42, 0.055);
+  --card-highlight: rgba(15, 23, 42, 0.035);
 }
 
 html,
@@ -352,19 +356,19 @@ body {
 
 .theme-warning-bg {
   background: var(--warning-soft);
-  color: var(--warning);
+  color: var(--warning-text);
   border: 1px solid color-mix(in srgb, var(--warning) 28%, transparent);
 }
 
 .theme-success-bg {
   background: var(--success-soft);
-  color: var(--success);
+  color: var(--success-text);
   border: 1px solid color-mix(in srgb, var(--success) 28%, transparent);
 }
 
 .theme-danger-bg {
   background: var(--danger-soft);
-  color: var(--danger);
+  color: var(--danger-text);
   border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent);
 }
 
