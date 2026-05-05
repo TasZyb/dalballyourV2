@@ -12,6 +12,7 @@ import {
 } from "react-router";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
+import { FootballLoader } from "~/components/FootballLoader";
 
 const FORMATIONS = ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2", "3-4-3", "5-3-2"];
 
@@ -1520,7 +1521,9 @@ export default function PredictAdvancedPage() {
   const [isScorerPickerOpen, setIsScorerPickerOpen] = useState(false);
   const [isMvpPickerOpen, setIsMvpPickerOpen] = useState(false);
 
+  const isRouteLoading = navigation.state === "loading";
   const isSubmitting = navigation.state === "submitting";
+  const isBusy = isRouteLoading || isSubmitting;
 
   const homePlayers = useMemo(
     () => sortPlayersForPicker(match.homeTeam.players || []),
@@ -1774,7 +1777,14 @@ export default function PredictAdvancedPage() {
   }
 
   return (
-    <div className="theme-page mx-auto max-w-7xl space-y-4 pb-8">
+    <>
+      {isBusy ? <FootballLoader /> : null}
+
+      <div
+        className={`theme-page mx-auto max-w-7xl space-y-4 pb-8 transition ${
+          isBusy ? "pointer-events-none select-none opacity-80" : "opacity-100"
+        }`}
+      >
       <Form method="post" className="space-y-4">
         <input type="hidden" name="predictedHome" value={predictedHome} />
         <input type="hidden" name="predictedAway" value={predictedAway} />
@@ -2347,5 +2357,6 @@ export default function PredictAdvancedPage() {
         onPick={toggleMvp}
       />
     </div>
+    </>
   );
 }

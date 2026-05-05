@@ -4,12 +4,14 @@ import {
   redirect,
   useLoaderData,
   useActionData,
+  useNavigation,
   data,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "react-router";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
+import { FootballLoader } from "~/components/FootballLoader";
 
 function getStatusLabel(status: string) {
   switch (status) {
@@ -703,10 +705,12 @@ function QuickScoreInput({
   name,
   teamName,
   defaultValue,
+  disabled = false,
 }: {
   name: string;
   teamName: string;
   defaultValue?: number | string;
+  disabled?: boolean;
 }) {
   return (
     <div className="space-y-2">
@@ -719,8 +723,9 @@ function QuickScoreInput({
         min={0}
         name={name}
         defaultValue={defaultValue}
+        disabled={disabled}
         placeholder="0"
-        className="h-16 w-full rounded-[24px] border border-white/10 bg-white/[0.05] px-4 text-center text-3xl font-black tracking-tight text-white outline-none transition placeholder:text-white/20 focus:border-white/20 focus:bg-white/[0.08] sm:h-20 sm:text-4xl"
+        className="h-16 w-full rounded-[24px] border border-white/10 bg-white/[0.05] px-4 text-center text-3xl font-black tracking-tight text-white outline-none transition placeholder:text-white/20 focus:border-white/20 focus:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-60 sm:h-20 sm:text-4xl"
       />
     </div>
   );
@@ -769,10 +774,16 @@ function PredictionPersonRow({ item }: { item: any }) {
 }
 
 export default function PredictPage() {
+  const navigation = useNavigation();
+
   const { game, pickerMatches, selectedMatchBlock, participantPredictions } =
     useLoaderData<typeof loader>();
 
   const actionData = useActionData<typeof action>();
+
+  const isRouteLoading = navigation.state === "loading";
+  const isSubmitting = navigation.state === "submitting";
+  const isBusy = isRouteLoading || isSubmitting;
 
   const selected = selectedMatchBlock;
   const selectedMatch = selected?.match ?? null;
@@ -782,299 +793,320 @@ export default function PredictPage() {
     : null;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 px-1 sm:px-0">
-      <section className="space-y-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
-              <TinyIconBall />
-              Predict
+    <>
+      {isBusy ? <FootballLoader /> : null}
+
+      <div
+        className={`mx-auto max-w-5xl space-y-6 px-1 transition sm:px-0 ${
+          isBusy ? "pointer-events-none select-none opacity-80" : "opacity-100"
+        }`}
+      >
+        <section className="space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
+                <TinyIconBall />
+                Predict
+              </div>
+
+              <h1 className="mt-3 text-2xl font-black tracking-tight text-white sm:text-3xl">
+                Прогнози
+              </h1>
+
+              <div className="mt-2 text-sm text-white/45">
+                Обери матч і постав рахунок
+              </div>
             </div>
 
-            <h1 className="mt-3 text-2xl font-black tracking-tight text-white sm:text-3xl">
-              Прогнози
-            </h1>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                to="../matches"
+                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/[0.08] hover:text-white"
+              >
+                <TinyIconBall />
+                Матчі
+              </Link>
 
-            <div className="mt-2 text-sm text-white/45">
-              Обери матч і постав рахунок
+              <Link
+                to="../leaderboard"
+                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/[0.08] hover:text-white"
+              >
+                <TinyIconUsers />
+                Таблиця
+              </Link>
             </div>
           </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Link
-              to="../matches"
-              className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/[0.08] hover:text-white"
-            >
-              <TinyIconBall />
-              Матчі
-            </Link>
-
-            <Link
-              to="../leaderboard"
-              className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/[0.08] hover:text-white"
-            >
-              <TinyIconUsers />
-              Таблиця
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-white">
-            <TinyIconClock />
-            <h2 className="text-base font-bold sm:text-lg">Вибір матчу</h2>
-          </div>
-
-          <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/55">
-            {pickerMatches.length}
-          </div>
-        </div>
-
-        {pickerMatches.length > 0 ? (
-          <div className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {pickerMatches.map((item) => (
-              <MatchPickerCard
-                key={item.gameMatchId}
-                item={item}
-                isActive={selectedMatch?.id === item.match.id}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-5 py-8 text-sm text-white/45">
-            Немає матчів для прогнозу
-          </div>
-        )}
-      </section>
-
-      {!selectedMatch ? (
-        <section className="rounded-[30px] border border-dashed border-white/10 bg-white/[0.03] px-6 py-10 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/60">
-            <TinyIconArrow />
-          </div>
-
-          <h3 className="mt-4 text-lg font-black text-white">
-            Спочатку обери матч
-          </h3>
-
-          <p className="mt-2 text-sm text-white/45">
-            Після вибору тут з’явиться швидкий прогноз і ставки учасників
-          </p>
         </section>
-      ) : (
-        <div className="space-y-5">
-          <section className="rounded-[32px] border border-white/10 bg-white/[0.05] px-4 py-5 sm:px-6 sm:py-6">
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  {selectedMatch.tournament ? (
-                    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/70">
-                      <div className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-white/85">
-                        {getTournamentLogoSrc(selectedMatch.tournament) ? (
-                          <img
-                            src={getTournamentLogoSrc(selectedMatch.tournament)!}
-                            alt={selectedMatch.tournament.name}
-                            className="h-3.5 w-3.5 object-contain"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <TinyIconBall />
-                        )}
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-white">
+              <TinyIconClock />
+              <h2 className="text-base font-bold sm:text-lg">Вибір матчу</h2>
+            </div>
+
+            <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/55">
+              {pickerMatches.length}
+            </div>
+          </div>
+
+          {pickerMatches.length > 0 ? (
+            <div className="flex gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {pickerMatches.map((item) => (
+                <MatchPickerCard
+                  key={item.gameMatchId}
+                  item={item}
+                  isActive={selectedMatch?.id === item.match.id}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-3xl border border-dashed border-white/10 bg-white/[0.03] px-5 py-8 text-sm text-white/45">
+              Немає матчів для прогнозу
+            </div>
+          )}
+        </section>
+
+        {!selectedMatch ? (
+          <section className="rounded-[30px] border border-dashed border-white/10 bg-white/[0.03] px-6 py-10 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/60">
+              <TinyIconArrow />
+            </div>
+
+            <h3 className="mt-4 text-lg font-black text-white">
+              Спочатку обери матч
+            </h3>
+
+            <p className="mt-2 text-sm text-white/45">
+              Після вибору тут з’явиться швидкий прогноз і ставки учасників
+            </p>
+          </section>
+        ) : (
+          <div className="space-y-5">
+            <section className="rounded-[32px] border border-white/10 bg-white/[0.05] px-4 py-5 sm:px-6 sm:py-6">
+              <div className="space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selectedMatch.tournament ? (
+                      <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/70">
+                        <div className="flex h-5 w-5 items-center justify-center overflow-hidden rounded-full bg-white/85">
+                          {getTournamentLogoSrc(selectedMatch.tournament) ? (
+                            <img
+                              src={getTournamentLogoSrc(selectedMatch.tournament)!}
+                              alt={selectedMatch.tournament.name}
+                              className="h-3.5 w-3.5 object-contain"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <TinyIconBall />
+                          )}
+                        </div>
+                        <span>{selectedMatch.tournament.name}</span>
                       </div>
-                      <span>{selectedMatch.tournament.name}</span>
+                    ) : null}
+
+                    {tournamentSubLabel ? (
+                      <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/55">
+                        {tournamentSubLabel}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/65">
+                    <span
+                      className={`h-2 w-2 rounded-full ${getStatusDotClass(
+                        selectedMatch.status
+                      )}`}
+                    />
+                    {getStatusLabel(selectedMatch.status)}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
+                  <div className="flex min-w-0 flex-col items-center gap-3 text-center">
+                    <TeamLogo team={selectedMatch.homeTeam} size="lg" />
+                    <div className="text-base font-black text-white sm:text-xl">
+                      {selectedMatch.homeTeam.shortName ||
+                        selectedMatch.homeTeam.name}
+                    </div>
+                  </div>
+
+                  <div className="flex min-w-[96px] flex-col items-center">
+                    <div className="text-3xl font-black tracking-tight text-white sm:text-5xl">
+                      {myPrediction
+                        ? `${myPrediction.predictedHome}:${myPrediction.predictedAway}`
+                        : "VS"}
+                    </div>
+
+                    <div className="mt-2 text-center text-xs text-white/45 sm:text-sm">
+                      {formatMatchDateFull(selectedMatch.startTime)}
+                      <br />
+                      {formatMatchTime(selectedMatch.startTime)}
+                    </div>
+                  </div>
+
+                  <div className="flex min-w-0 flex-col items-center gap-3 text-center">
+                    <TeamLogo team={selectedMatch.awayTeam} size="lg" />
+                    <div className="text-base font-black text-white sm:text-xl">
+                      {selectedMatch.awayTeam.shortName ||
+                        selectedMatch.awayTeam.name}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-white/55">
+                    <TinyIconClock />
+                    Дедлайн:{" "}
+                    {new Date(selected.predictionDeadline).toLocaleString("uk-UA")}
+                  </div>
+
+                  {selected.customWeight ? (
+                    <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-white/55">
+                      Вага: {selected.customWeight}x
                     </div>
                   ) : null}
 
-                  {tournamentSubLabel ? (
-                    <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/55">
-                      {tournamentSubLabel}
+                  {myPrediction ? (
+                    <div className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-emerald-200">
+                      Прогноз уже є
                     </div>
                   ) : null}
                 </div>
-
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/65">
-                  <span
-                    className={`h-2 w-2 rounded-full ${getStatusDotClass(
-                      selectedMatch.status
-                    )}`}
-                  />
-                  {getStatusLabel(selectedMatch.status)}
-                </div>
               </div>
+            </section>
 
-              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
-                <div className="flex min-w-0 flex-col items-center gap-3 text-center">
-                  <TeamLogo team={selectedMatch.homeTeam} size="lg" />
-                  <div className="text-base font-black text-white sm:text-xl">
-                    {selectedMatch.homeTeam.shortName || selectedMatch.homeTeam.name}
+            <section className="rounded-[32px] border border-white/10 bg-white/[0.05] px-4 py-5 sm:px-6 sm:py-6">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 text-white">
+                    <TinyIconBall />
+                    <h3 className="text-lg font-black sm:text-xl">
+                      Швидкий прогноз
+                    </h3>
+                  </div>
+
+                  <div className="mt-1 text-sm text-white/45">
+                    Просто введи рахунок
                   </div>
                 </div>
-
-                <div className="flex min-w-[96px] flex-col items-center">
-                  <div className="text-3xl font-black tracking-tight text-white sm:text-5xl">
-                    {myPrediction
-                      ? `${myPrediction.predictedHome}:${myPrediction.predictedAway}`
-                      : "VS"}
-                  </div>
-
-                  <div className="mt-2 text-center text-xs text-white/45 sm:text-sm">
-                    {formatMatchDateFull(selectedMatch.startTime)}
-                    <br />
-                    {formatMatchTime(selectedMatch.startTime)}
-                  </div>
-                </div>
-
-                <div className="flex min-w-0 flex-col items-center gap-3 text-center">
-                  <TeamLogo team={selectedMatch.awayTeam} size="lg" />
-                  <div className="text-base font-black text-white sm:text-xl">
-                    {selectedMatch.awayTeam.shortName || selectedMatch.awayTeam.name}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2 text-xs">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-white/55">
-                  <TinyIconClock />
-                  Дедлайн:{" "}
-                  {new Date(selected.predictionDeadline).toLocaleString("uk-UA")}
-                </div>
-
-                {selected.customWeight ? (
-                  <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-white/55">
-                    Вага: {selected.customWeight}x
-                  </div>
-                ) : null}
 
                 {myPrediction ? (
-                  <div className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-emerald-200">
-                    Прогноз уже є
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/60">
+                    Поточний: {myPrediction.predictedHome}:
+                    {myPrediction.predictedAway}
                   </div>
                 ) : null}
               </div>
-            </div>
-          </section>
 
-          <section className="rounded-[32px] border border-white/10 bg-white/[0.05] px-4 py-5 sm:px-6 sm:py-6">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
+              {actionData?.error ? (
+                <div className="mb-4 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  {actionData.error}
+                </div>
+              ) : null}
+
+              {selected.isLocked ? (
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-4 text-sm text-amber-100">
+                    Прогноз на цей матч уже закритий
+                  </div>
+
+                  {myPrediction ? (
+                    <div className="inline-flex rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200">
+                      Мій прогноз: {myPrediction.predictedHome}:
+                      {myPrediction.predictedAway}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-white/10 px-4 py-4 text-sm text-white/45">
+                      Ти не встиг подати прогноз
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Form method="post" className="space-y-4">
+                  <input type="hidden" name="matchId" value={selectedMatch.id} />
+
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-5">
+                    <QuickScoreInput
+                      name="predictedHome"
+                      teamName={
+                        selectedMatch.homeTeam.shortName ||
+                        selectedMatch.homeTeam.name
+                      }
+                      defaultValue={myPrediction?.predictedHome ?? ""}
+                      disabled={isSubmitting}
+                    />
+
+                    <div className="pt-7 text-center text-3xl font-black text-white/25 sm:text-5xl">
+                      :
+                    </div>
+
+                    <QuickScoreInput
+                      name="predictedAway"
+                      teamName={
+                        selectedMatch.awayTeam.shortName ||
+                        selectedMatch.awayTeam.name
+                      }
+                      defaultValue={myPrediction?.predictedAway ?? ""}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="inline-flex h-14 items-center justify-center gap-2 rounded-[22px] border border-white/15 bg-white px-5 text-sm font-black text-black transition hover:-translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      <TinyIconBall />
+                      {isSubmitting
+                        ? "Зберігаю..."
+                        : myPrediction
+                        ? "Оновити прогноз"
+                        : "Зберегти прогноз"}
+                    </button>
+
+                    <Link
+                      to={`../predict-advanced/${selectedMatch.id}`}
+                      className="inline-flex h-14 items-center justify-center gap-2 rounded-[22px] border border-white/10 bg-white/[0.05] px-5 text-sm font-bold text-white transition hover:-translate-y-[1px] hover:border-white/20 hover:bg-white/[0.08]"
+                    >
+                      <TinyIconArrow />
+                      Детальний прогноз
+                    </Link>
+                  </div>
+                </Form>
+              )}
+            </section>
+
+            <section className="rounded-[28px] border border-white/10 bg-white/[0.05] px-4 py-5 sm:px-6 sm:py-6">
+              <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-white">
-                  <TinyIconBall />
+                  <TinyIconUsers />
                   <h3 className="text-lg font-black sm:text-xl">
-                    Швидкий прогноз
+                    Хто як поставив
                   </h3>
                 </div>
 
-                <div className="mt-1 text-sm text-white/45">
-                  Просто введи рахунок
+                <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/55">
+                  {participantPredictions.length}
                 </div>
               </div>
 
-              {myPrediction ? (
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/60">
-                  Поточний: {myPrediction.predictedHome}:{myPrediction.predictedAway}
-                </div>
-              ) : null}
-            </div>
-
-            {actionData?.error ? (
-              <div className="mb-4 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                {actionData.error}
-              </div>
-            ) : null}
-
-            {selected.isLocked ? (
-              <div className="space-y-3">
-                <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-4 text-sm text-amber-100">
-                  Прогноз на цей матч уже закритий
-                </div>
-
-                {myPrediction ? (
-                  <div className="inline-flex rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200">
-                    Мій прогноз: {myPrediction.predictedHome}:{myPrediction.predictedAway}
-                  </div>
+              <div className="mt-4 space-y-2">
+                {participantPredictions.length > 0 ? (
+                  participantPredictions.map((item) => (
+                    <PredictionPersonRow key={item.userId} item={item} />
+                  ))
                 ) : (
-                  <div className="rounded-2xl border border-dashed border-white/10 px-4 py-4 text-sm text-white/45">
-                    Ти не встиг подати прогноз
+                  <div className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-white/45">
+                    Поки що тут немає прогнозів
                   </div>
                 )}
               </div>
-            ) : (
-              <Form method="post" className="space-y-4">
-                <input type="hidden" name="matchId" value={selectedMatch.id} />
-
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-5">
-                  <QuickScoreInput
-                    name="predictedHome"
-                    teamName={
-                      selectedMatch.homeTeam.shortName || selectedMatch.homeTeam.name
-                    }
-                    defaultValue={myPrediction?.predictedHome ?? ""}
-                  />
-
-                  <div className="pt-7 text-center text-3xl font-black text-white/25 sm:text-5xl">
-                    :
-                  </div>
-
-                  <QuickScoreInput
-                    name="predictedAway"
-                    teamName={
-                      selectedMatch.awayTeam.shortName || selectedMatch.awayTeam.name
-                    }
-                    defaultValue={myPrediction?.predictedAway ?? ""}
-                  />
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <button
-                    type="submit"
-                    className="inline-flex h-14 items-center justify-center gap-2 rounded-[22px] border border-white/15 bg-white px-5 text-sm font-black text-black transition hover:-translate-y-[1px]"
-                  >
-                    <TinyIconBall />
-                    {myPrediction ? "Оновити прогноз" : "Зберегти прогноз"}
-                  </button>
-
-                  <Link
-                    to={`../predict-advanced/${selectedMatch.id}`}
-                    className="inline-flex h-14 items-center justify-center gap-2 rounded-[22px] border border-white/10 bg-white/[0.05] px-5 text-sm font-bold text-white transition hover:-translate-y-[1px] hover:border-white/20 hover:bg-white/[0.08]"
-                  >
-                    <TinyIconArrow />
-                    Детальний прогноз
-                  </Link>
-                </div>
-              </Form>
-            )}
-          </section>
-
-          <section className="rounded-[28px] border border-white/10 bg-white/[0.05] px-4 py-5 sm:px-6 sm:py-6">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-white">
-                <TinyIconUsers />
-                <h3 className="text-lg font-black sm:text-xl">
-                  Хто як поставив
-                </h3>
-              </div>
-
-              <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/55">
-                {participantPredictions.length}
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-2">
-              {participantPredictions.length > 0 ? (
-                participantPredictions.map((item) => (
-                  <PredictionPersonRow key={item.userId} item={item} />
-                ))
-              ) : (
-                <div className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-white/45">
-                  Поки що тут немає прогнозів
-                </div>
-              )}
-            </div>
-          </section>
-        </div>
-      )}
-    </div>
+            </section>
+          </div>
+        )}
+      </div>
+    </>
   );
 }

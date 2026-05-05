@@ -3,6 +3,7 @@ import {
   Link,
   redirect,
   useLoaderData,
+  useNavigation,
   data,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
@@ -10,6 +11,7 @@ import {
 import { useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
+import { FootballLoader } from "~/components/FootballLoader";
 
 const LIVE_STATUSES = ["LIVE", "IN_PLAY", "PAUSED", "HALFTIME", "BREAK"];
 const UPCOMING_STATUSES = ["SCHEDULED", "TIMED"];
@@ -568,12 +570,27 @@ function CrownIcon() {
   return (
     <svg
       viewBox="0 0 64 64"
-      className="absolute right-[50%] translate-x-[50%] top-[-50%] h-7 w-7 drop-shadow-lg"
+      className="absolute right-[50%] top-[-50%] h-7 w-7 translate-x-[50%] drop-shadow-lg"
       aria-hidden="true"
     >
-      <path d="M10 48h44l-4 8H14l-4-8Z" fill="currentColor" className="text-amber-300" />
-      <path d="M8 22l14 12 10-20 10 20 14-12-5 25H13L8 22Z" fill="currentColor" className="text-yellow-300" />
-      <path d="M22 34l10-20 10 20" fill="none" stroke="rgba(0,0,0,.25)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M10 48h44l-4 8H14l-4-8Z"
+        fill="currentColor"
+        className="text-amber-300"
+      />
+      <path
+        d="M8 22l14 12 10-20 10 20 14-12-5 25H13L8 22Z"
+        fill="currentColor"
+        className="text-yellow-300"
+      />
+      <path
+        d="M22 34l10-20 10 20"
+        fill="none"
+        stroke="rgba(0,0,0,.25)"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
       <circle cx="8" cy="22" r="4" fill="currentColor" className="text-amber-200" />
       <circle cx="32" cy="14" r="4" fill="currentColor" className="text-amber-200" />
       <circle cx="56" cy="22" r="4" fill="currentColor" className="text-amber-200" />
@@ -644,7 +661,12 @@ function TeamCell({
 
       <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--border)] bg-[var(--panel)]">
         {logoSrc ? (
-          <img src={logoSrc} alt={team.name} className="h-5 w-5 object-contain" loading="lazy" />
+          <img
+            src={logoSrc}
+            alt={team.name}
+            className="h-5 w-5 object-contain"
+            loading="lazy"
+          />
         ) : (
           <span className="text-[9px] font-black text-[var(--text-soft)]">
             {(team.code || team.shortName || team.name).slice(0, 3).toUpperCase()}
@@ -689,7 +711,12 @@ function TournamentBadge({
         <div className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--panel)] px-2 py-0.5">
           <div className="flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/90">
             {logoSrc ? (
-              <img src={logoSrc} alt={tournament.name} className="h-3 w-3 object-contain" loading="lazy" />
+              <img
+                src={logoSrc}
+                alt={tournament.name}
+                className="h-3 w-3 object-contain"
+                loading="lazy"
+              />
             ) : (
               <span className="text-[8px] font-bold text-black/70">
                 {tournament.name.slice(0, 2).toUpperCase()}
@@ -914,11 +941,7 @@ function OtherMatchesBlock({
   );
 
   const matchesByTab =
-    tab === "active"
-      ? activeMatches
-      : tab === "finished"
-      ? finishedMatches
-      : otherMatches;
+    tab === "active" ? activeMatches : tab === "finished" ? finishedMatches : otherMatches;
 
   const visibleMatches = matchesByTab.slice(0, visible);
   const canShowMore = visible < matchesByTab.length;
@@ -1019,6 +1042,8 @@ function OtherMatchesBlock({
 }
 
 export default function MatchDetailsPage() {
+  const navigation = useNavigation();
+
   const {
     game,
     compactMatches,
@@ -1026,6 +1051,10 @@ export default function MatchDetailsPage() {
     predictionRows,
     maxWeightedPoints,
   } = useLoaderData<typeof loader>();
+
+  const isRouteLoading = navigation.state === "loading";
+  const isSubmitting = navigation.state === "submitting";
+  const isBusy = isRouteLoading || isSubmitting;
 
   const selected = selectedMatchBlock;
   const selectedMatch = selected.match;
@@ -1051,218 +1080,235 @@ export default function MatchDetailsPage() {
       : "Показані прогнози тих, хто вже зробив ставку.";
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5 sm:space-y-8">
-      <section className="space-y-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="theme-muted text-xs font-black uppercase tracking-[0.24em]">
-              Match details
-            </p>
+    <>
+      {isBusy ? <FootballLoader /> : null}
 
-            <h1 className="mt-2 text-2xl font-black tracking-tight text-[var(--text)] sm:text-3xl">
-              Деталі матчу
-            </h1>
+      <div
+        className={`mx-auto max-w-6xl space-y-5 transition sm:space-y-8 ${
+          isBusy ? "pointer-events-none select-none opacity-80" : "opacity-100"
+        }`}
+      >
+        <section className="space-y-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="theme-muted text-xs font-black uppercase tracking-[0.24em]">
+                Match details
+              </p>
 
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-soft)]">
-              Матч, прогноз і результати учасників у грі{" "}
-              <span className="font-bold text-[var(--text)]">{game.name}</span>.
-            </p>
+              <h1 className="mt-2 text-2xl font-black tracking-tight text-[var(--text)] sm:text-3xl">
+                Деталі матчу
+              </h1>
+
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-soft)]">
+                Матч, прогноз і результати учасників у грі{" "}
+                <span className="font-bold text-[var(--text)]">{game.name}</span>.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Link
+                to={`/games/${game.id}/matches`}
+                className="rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-sm font-bold text-[var(--text-soft)] transition hover:bg-[var(--panel-strong)] hover:text-[var(--text)]"
+              >
+                Усі матчі
+              </Link>
+
+              <Link
+                to={`/games/${game.id}/leaderboard`}
+                className="rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-sm font-bold text-[var(--text-soft)] transition hover:bg-[var(--panel-strong)] hover:text-[var(--text)]"
+              >
+                Таблиця
+              </Link>
+            </div>
           </div>
+        </section>
 
-          <div className="flex flex-wrap gap-2">
-            <Link
-              to={`/games/${game.id}/matches`}
-              className="rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-sm font-bold text-[var(--text-soft)] transition hover:bg-[var(--panel-strong)] hover:text-[var(--text)]"
-            >
-              Усі матчі
-            </Link>
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="space-y-6">
+            <section className="space-y-4">
+              <div className="theme-panel rounded-3xl px-4 py-4 sm:px-5">
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <TournamentBadge
+                      tournament={selectedMatch.tournament}
+                      label={tournamentSubLabel}
+                    />
 
-            <Link
-              to={`/games/${game.id}/leaderboard`}
-              className="rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-sm font-bold text-[var(--text-soft)] transition hover:bg-[var(--panel-strong)] hover:text-[var(--text)]"
-            >
-              Таблиця
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="space-y-6">
-          <section className="space-y-4">
-            <div className="theme-panel rounded-3xl px-4 py-4 sm:px-5">
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <TournamentBadge
-                    tournament={selectedMatch.tournament}
-                    label={tournamentSubLabel}
-                  />
-
-                  <StatusPill status={selectedMatch.status} />
-                </div>
-
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3">
-                  <TeamCell team={selectedMatch.homeTeam} align="left" strong />
-
-                  <div className="flex min-w-[82px] flex-col items-center justify-center sm:min-w-[90px]">
-                    <div className="text-2xl font-black tracking-tight text-[var(--text)] sm:text-3xl">
-                      {hasScore
-                        ? `${selectedMatch.homeScore ?? 0}:${selectedMatch.awayScore ?? 0}`
-                        : "vs"}
-                    </div>
-
-                    <div className="mt-1 text-center text-[10px] font-bold text-[var(--muted)] sm:text-[11px]">
-                      {formatMatchDate(selectedMatch.startTime)} •{" "}
-                      {formatMatchTime(selectedMatch.startTime)}
-                    </div>
+                    <StatusPill status={selectedMatch.status} />
                   </div>
 
-                  <TeamCell team={selectedMatch.awayTeam} align="right" strong />
-                </div>
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3">
+                    <TeamCell team={selectedMatch.homeTeam} align="left" strong />
 
-                <div className="flex flex-wrap gap-2 text-xs text-[var(--text-soft)]">
-                  <div className="rounded-full border border-[var(--border)] bg-[var(--panel)] px-3 py-1.5">
-                    Дедлайн:{" "}
-                    {new Date(selected.predictionDeadline).toLocaleString("uk-UA")}
+                    <div className="flex min-w-[82px] flex-col items-center justify-center sm:min-w-[90px]">
+                      <div className="text-2xl font-black tracking-tight text-[var(--text)] sm:text-3xl">
+                        {hasScore
+                          ? `${selectedMatch.homeScore ?? 0}:${
+                              selectedMatch.awayScore ?? 0
+                            }`
+                          : "vs"}
+                      </div>
+
+                      <div className="mt-1 text-center text-[10px] font-bold text-[var(--muted)] sm:text-[11px]">
+                        {formatMatchDate(selectedMatch.startTime)} •{" "}
+                        {formatMatchTime(selectedMatch.startTime)}
+                      </div>
+                    </div>
+
+                    <TeamCell team={selectedMatch.awayTeam} align="right" strong />
                   </div>
 
-                  <div className="rounded-full border border-[var(--border)] bg-[var(--panel)] px-3 py-1.5">
-                    Вага: {selected.weightUsed}x
+                  <div className="flex flex-wrap gap-2 text-xs text-[var(--text-soft)]">
+                    <div className="rounded-full border border-[var(--border)] bg-[var(--panel)] px-3 py-1.5">
+                      Дедлайн:{" "}
+                      {new Date(selected.predictionDeadline).toLocaleString("uk-UA")}
+                    </div>
+
+                    <div className="rounded-full border border-[var(--border)] bg-[var(--panel)] px-3 py-1.5">
+                      Вага: {selected.weightUsed}x
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div className="theme-panel rounded-3xl px-4 py-4 sm:px-5">
-              {selected.isLocked ? (
-                <div className="space-y-3">
-                  <div className="text-sm font-bold text-[var(--text-soft)]">
-                    Прогноз на цей матч уже закритий.
+              <div className="theme-panel rounded-3xl px-4 py-4 sm:px-5">
+                {selected.isLocked ? (
+                  <div className="space-y-3">
+                    <div className="text-sm font-bold text-[var(--text-soft)]">
+                      Прогноз на цей матч уже закритий.
+                    </div>
+
+                    {myPrediction ? (
+                      <div className="inline-flex rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-black text-emerald-300">
+                        Мій прогноз: {myPrediction.predictedHome}:
+                        {myPrediction.predictedAway}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-dashed border-[var(--border)] px-4 py-3 text-sm text-[var(--text-soft)]">
+                        Ти не встиг подати прогноз.
+                      </div>
+                    )}
                   </div>
+                ) : (
+                  <Form method="post" className="space-y-4">
+                    <input type="hidden" name="matchId" value={selectedMatch.id} />
 
-                  {myPrediction ? (
-                    <div className="inline-flex rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-black text-emerald-300">
-                      Мій прогноз: {myPrediction.predictedHome}:
-                      {myPrediction.predictedAway}
+                    <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-3 sm:gap-4">
+                      <div>
+                        <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.14em] text-[var(--muted)]">
+                          {selectedMatch.homeTeam.shortName ||
+                            selectedMatch.homeTeam.name}
+                        </label>
+
+                        <input
+                          type="number"
+                          min={0}
+                          name="predictedHome"
+                          defaultValue={myPrediction?.predictedHome ?? ""}
+                          disabled={isSubmitting}
+                          className="w-full rounded-2xl border border-[var(--border)] bg-[var(--panel)] px-4 py-3 text-center text-xl font-black text-[var(--text)] outline-none transition placeholder:text-[var(--muted)] focus:border-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-60"
+                          placeholder="0"
+                        />
+                      </div>
+
+                      <div className="pb-3 text-lg font-black text-[var(--muted)]">
+                        :
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.14em] text-[var(--muted)]">
+                          {selectedMatch.awayTeam.shortName ||
+                            selectedMatch.awayTeam.name}
+                        </label>
+
+                        <input
+                          type="number"
+                          min={0}
+                          name="predictedAway"
+                          defaultValue={myPrediction?.predictedAway ?? ""}
+                          disabled={isSubmitting}
+                          className="w-full rounded-2xl border border-[var(--border)] bg-[var(--panel)] px-4 py-3 text-center text-xl font-black text-[var(--text)] outline-none transition placeholder:text-[var(--muted)] focus:border-[var(--accent)]/40 disabled:cursor-not-allowed disabled:opacity-60"
+                          placeholder="0"
+                        />
+                      </div>
                     </div>
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-[var(--border)] px-4 py-3 text-sm text-[var(--text-soft)]">
-                      Ти не встиг подати прогноз.
+
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="text-sm text-[var(--text-soft)]">
+                        {myPrediction
+                          ? `Поточний прогноз: ${myPrediction.predictedHome}:${myPrediction.predictedAway}`
+                          : "Ти ще не подавав прогноз на цей матч"}
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="inline-flex h-11 items-center justify-center rounded-2xl bg-[var(--accent)] px-5 text-sm font-black text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {isSubmitting
+                          ? "Зберігаю..."
+                          : myPrediction
+                          ? "Оновити прогноз"
+                          : "Зберегти прогноз"}
+                      </button>
                     </div>
-                  )}
+                  </Form>
+                )}
+              </div>
+            </section>
+
+            <section className="space-y-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h3 className="text-lg font-black text-[var(--text)] sm:text-xl">
+                    {sectionTitle}
+                  </h3>
+
+                  <p className="text-sm text-[var(--text-soft)]">
+                    {sectionSubtitle}
+                  </p>
+                </div>
+
+                <span className="w-fit rounded-full border border-[var(--border)] bg-[var(--panel)] px-3 py-1 text-xs font-bold text-[var(--muted)]">
+                  {predictionRows.length}
+                </span>
+              </div>
+
+              {predictionRows.length > 0 ? (
+                <div className="space-y-2">
+                  {predictionRows.map((item: any) => {
+                    const isTop =
+                      selected.mode !== "UPCOMING" &&
+                      maxWeightedPoints > 0 &&
+                      (item.weightedPoints ?? 0) === maxWeightedPoints;
+
+                    return (
+                      <ParticipantPredictionRow
+                        key={item.id}
+                        item={item}
+                        mode={selected.mode}
+                        isTop={isTop}
+                      />
+                    );
+                  })}
                 </div>
               ) : (
-                <Form method="post" className="space-y-4">
-                  <input type="hidden" name="matchId" value={selectedMatch.id} />
-
-                  <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-3 sm:gap-4">
-                    <div>
-                      <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.14em] text-[var(--muted)]">
-                        {selectedMatch.homeTeam.shortName ||
-                          selectedMatch.homeTeam.name}
-                      </label>
-
-                      <input
-                        type="number"
-                        min={0}
-                        name="predictedHome"
-                        defaultValue={myPrediction?.predictedHome ?? ""}
-                        className="w-full rounded-2xl border border-[var(--border)] bg-[var(--panel)] px-4 py-3 text-center text-xl font-black text-[var(--text)] outline-none transition placeholder:text-[var(--muted)] focus:border-[var(--accent)]/40"
-                        placeholder="0"
-                      />
-                    </div>
-
-                    <div className="pb-3 text-lg font-black text-[var(--muted)]">
-                      :
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.14em] text-[var(--muted)]">
-                        {selectedMatch.awayTeam.shortName ||
-                          selectedMatch.awayTeam.name}
-                      </label>
-
-                      <input
-                        type="number"
-                        min={0}
-                        name="predictedAway"
-                        defaultValue={myPrediction?.predictedAway ?? ""}
-                        className="w-full rounded-2xl border border-[var(--border)] bg-[var(--panel)] px-4 py-3 text-center text-xl font-black text-[var(--text)] outline-none transition placeholder:text-[var(--muted)] focus:border-[var(--accent)]/40"
-                        placeholder="0"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="text-sm text-[var(--text-soft)]">
-                      {myPrediction
-                        ? `Поточний прогноз: ${myPrediction.predictedHome}:${myPrediction.predictedAway}`
-                        : "Ти ще не подавав прогноз на цей матч"}
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="inline-flex h-11 items-center justify-center rounded-2xl bg-[var(--accent)] px-5 text-sm font-black text-black transition hover:opacity-90"
-                    >
-                      {myPrediction ? "Оновити прогноз" : "Зберегти прогноз"}
-                    </button>
-                  </div>
-                </Form>
+                <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--panel)] px-4 py-6 text-sm text-[var(--text-soft)]">
+                  Поки що ніхто не зробив прогноз на цей матч.
+                </div>
               )}
-            </div>
-          </section>
+            </section>
+          </div>
 
-          <section className="space-y-3">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h3 className="text-lg font-black text-[var(--text)] sm:text-xl">
-                  {sectionTitle}
-                </h3>
-
-                <p className="text-sm text-[var(--text-soft)]">
-                  {sectionSubtitle}
-                </p>
-              </div>
-
-              <span className="w-fit rounded-full border border-[var(--border)] bg-[var(--panel)] px-3 py-1 text-xs font-bold text-[var(--muted)]">
-                {predictionRows.length}
-              </span>
-            </div>
-
-            {predictionRows.length > 0 ? (
-              <div className="space-y-2">
-                {predictionRows.map((item: any) => {
-                  const isTop =
-                    selected.mode !== "UPCOMING" &&
-                    maxWeightedPoints > 0 &&
-                    (item.weightedPoints ?? 0) === maxWeightedPoints;
-
-                  return (
-                    <ParticipantPredictionRow
-                      key={item.id}
-                      item={item}
-                      mode={selected.mode}
-                      isTop={isTop}
-                    />
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--panel)] px-4 py-6 text-sm text-[var(--text-soft)]">
-                Поки що ніхто не зробив прогноз на цей матч.
-              </div>
-            )}
-          </section>
-        </div>
-
-        <aside className="xl:sticky xl:top-24 xl:self-start">
-          <OtherMatchesBlock
-            compactMatches={compactMatches}
-            gameId={game.id}
-            selectedMatchId={selectedMatchId}
-          />
-        </aside>
-      </section>
-    </div>
+          <aside className="xl:sticky xl:top-24 xl:self-start">
+            <OtherMatchesBlock
+              compactMatches={compactMatches}
+              gameId={game.id}
+              selectedMatchId={selectedMatchId}
+            />
+          </aside>
+        </section>
+      </div>
+    </>
   );
 }

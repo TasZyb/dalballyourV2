@@ -1,8 +1,14 @@
-import { data, useLoaderData, type LoaderFunctionArgs } from "react-router";
+import {
+  data,
+  useLoaderData,
+  useNavigation,
+  type LoaderFunctionArgs,
+} from "react-router";
 import { useMemo, useState } from "react";
 import { MatchStatus, MembershipStatus } from "@prisma/client";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
+import { FootballLoader } from "~/components/FootballLoader";
 
 type LeaderboardView = "overview" | "exact" | "form";
 
@@ -734,10 +740,16 @@ function MobileRow({
 }
 
 export default function LeaderboardPage() {
+  const navigation = useNavigation();
+
   const { currentUser, game, leaderboard, highlights } =
     useLoaderData<typeof loader>();
 
   const [view, setView] = useState<LeaderboardView>("overview");
+
+  const isRouteLoading = navigation.state === "loading";
+  const isSubmitting = navigation.state === "submitting";
+  const isBusy = isRouteLoading || isSubmitting;
 
   const displayedRows = useMemo(() => {
     const rows = [...leaderboard];
@@ -809,373 +821,394 @@ export default function LeaderboardPage() {
       : 0;
 
   return (
-    <div className="space-y-4">
-      <section
-        className="rounded-[28px] p-3 sm:p-4"
-        style={{
-          background: "var(--panel-strong)",
-          border: "1px solid var(--border)",
-        }}
+    <>
+      {isBusy ? <FootballLoader /> : null}
+
+      <div
+        className={`space-y-4 transition ${
+          isBusy ? "pointer-events-none select-none opacity-80" : "opacity-100"
+        }`}
       >
-        <div className="-mx-1 overflow-x-auto pb-1">
-          <div className="flex min-w-max gap-2 px-1">
-            <TabButton
-              active={view === "overview"}
-              onClick={() => setView("overview")}
-            >
-              Загальна
-            </TabButton>
-
-            <TabButton active={view === "exact"} onClick={() => setView("exact")}>
-              В ціль
-            </TabButton>
-
-            <TabButton active={view === "form"} onClick={() => setView("form")}>
-              Форма
-            </TabButton>
-          </div>
-        </div>
-
-        <div
-          className="mt-3 overflow-hidden rounded-[24px]"
+        <section
+          className="rounded-[28px] p-3 sm:p-4"
           style={{
-            background: "var(--panel)",
+            background: "var(--panel-strong)",
             border: "1px solid var(--border)",
           }}
         >
-          {displayedRows.length === 0 ? (
-            <div className="p-4 text-sm" style={{ color: "var(--text-soft)" }}>
-              Поки що немає даних.
-            </div>
-          ) : (
-            <>
-              <div
-                className="grid grid-cols-[40px_minmax(0,1fr)_auto] gap-3 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] md:hidden"
-                style={{
-                  color: "var(--muted)",
-                  borderBottom: "1px solid var(--border)",
-                }}
+          <div className="-mx-1 overflow-x-auto pb-1">
+            <div className="flex min-w-max gap-2 px-1">
+              <TabButton
+                active={view === "overview"}
+                onClick={() => setView("overview")}
               >
-                <div>#</div>
-                <div>Гравець</div>
-                <div>Очки</div>
+                Загальна
+              </TabButton>
+
+              <TabButton
+                active={view === "exact"}
+                onClick={() => setView("exact")}
+              >
+                В ціль
+              </TabButton>
+
+              <TabButton
+                active={view === "form"}
+                onClick={() => setView("form")}
+              >
+                Форма
+              </TabButton>
+            </div>
+          </div>
+
+          <div
+            className="mt-3 overflow-hidden rounded-[24px]"
+            style={{
+              background: "var(--panel)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            {displayedRows.length === 0 ? (
+              <div className="p-4 text-sm" style={{ color: "var(--text-soft)" }}>
+                Поки що немає даних.
               </div>
+            ) : (
+              <>
+                <div
+                  className="grid grid-cols-[40px_minmax(0,1fr)_auto] gap-3 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] md:hidden"
+                  style={{
+                    color: "var(--muted)",
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  <div>#</div>
+                  <div>Гравець</div>
+                  <div>Очки</div>
+                </div>
 
-              <div className="md:hidden">
-                {displayedRows.map((player) => (
-                  <MobileRow
-                    key={player.id}
-                    player={player}
-                    currentUserId={currentUser?.id}
-                  />
-                ))}
-              </div>
+                <div className="md:hidden">
+                  {displayedRows.map((player) => (
+                    <MobileRow
+                      key={player.id}
+                      player={player}
+                      currentUserId={currentUser?.id}
+                    />
+                  ))}
+                </div>
 
-              <div className="hidden md:block">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full border-collapse text-sm">
-                    <thead>
-                      <tr
-                        style={{
-                          color: "var(--muted)",
-                          borderBottom: "1px solid var(--border)",
-                        }}
-                      >
-                        <th className="px-4 py-3 text-left font-black">#</th>
-                        <th className="px-4 py-3 text-left font-black">
-                          Гравець
-                        </th>
-                        <th className="px-4 py-3 text-right font-black">
-                          Очки
-                        </th>
-                        <th className="px-4 py-3 text-right font-black">
-                          Матчі
-                        </th>
-                        <th className="px-4 py-3 text-right font-black">
-                          Форма
-                        </th>
-                        <th className="px-4 py-3 text-right font-black">
-                          В ціль
-                        </th>
-                        <th className="px-4 py-3 text-right font-black">
-                          Останні 5
-                        </th>
-                        <th className="px-4 py-3 text-right font-black">
-                          Move
-                        </th>
-                      </tr>
-                    </thead>
+                <div className="hidden md:block">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full border-collapse text-sm">
+                      <thead>
+                        <tr
+                          style={{
+                            color: "var(--muted)",
+                            borderBottom: "1px solid var(--border)",
+                          }}
+                        >
+                          <th className="px-4 py-3 text-left font-black">#</th>
+                          <th className="px-4 py-3 text-left font-black">
+                            Гравець
+                          </th>
+                          <th className="px-4 py-3 text-right font-black">
+                            Очки
+                          </th>
+                          <th className="px-4 py-3 text-right font-black">
+                            Матчі
+                          </th>
+                          <th className="px-4 py-3 text-right font-black">
+                            Форма
+                          </th>
+                          <th className="px-4 py-3 text-right font-black">
+                            В ціль
+                          </th>
+                          <th className="px-4 py-3 text-right font-black">
+                            Останні 5
+                          </th>
+                          <th className="px-4 py-3 text-right font-black">
+                            Move
+                          </th>
+                        </tr>
+                      </thead>
 
-                    <tbody>
-                      {displayedRows.map((player) => {
-                        const isMe = player.id === currentUser?.id;
-                        const isTop3 = player.rank <= 3;
+                      <tbody>
+                        {displayedRows.map((player) => {
+                          const isMe = player.id === currentUser?.id;
+                          const isTop3 = player.rank <= 3;
 
-                        return (
-                          <tr
-                            key={player.id}
-                            style={{
-                              ...(isTop3
-                                ? rankAccentStyle(player.rank)
-                                : { borderTop: "1px solid var(--border)" }),
-                              background: isMe
-                                ? "var(--accent-soft)"
-                                : isTop3
-                                ? rankAccentStyle(player.rank).background
-                                : "transparent",
-                            }}
-                          >
-                            <td className="px-4 py-3">
-                              {player.rank <= 3 ? (
-                                <div className="flex items-center gap-2">
-                                  <MedalIcon place={player.rank as 1 | 2 | 3} />
+                          return (
+                            <tr
+                              key={player.id}
+                              style={{
+                                ...(isTop3
+                                  ? rankAccentStyle(player.rank)
+                                  : { borderTop: "1px solid var(--border)" }),
+                                background: isMe
+                                  ? "var(--accent-soft)"
+                                  : isTop3
+                                  ? rankAccentStyle(player.rank).background
+                                  : "transparent",
+                              }}
+                            >
+                              <td className="px-4 py-3">
+                                {player.rank <= 3 ? (
+                                  <div className="flex items-center gap-2">
+                                    <MedalIcon
+                                      place={player.rank as 1 | 2 | 3}
+                                    />
+                                    <span
+                                      className="font-black tabular-nums"
+                                      style={{ color: "var(--text)" }}
+                                    >
+                                      #{player.rank}
+                                    </span>
+                                  </div>
+                                ) : (
                                   <span
                                     className="font-black tabular-nums"
-                                    style={{ color: "var(--text)" }}
+                                    style={{ color: "var(--muted)" }}
                                   >
                                     #{player.rank}
                                   </span>
+                                )}
+                              </td>
+
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-3">
+                                  <Avatar
+                                    name={player.name}
+                                    image={player.image}
+                                    size="sm"
+                                  />
+
+                                  <div className="min-w-0">
+                                    <div
+                                      className="truncate font-black"
+                                      style={{ color: "var(--text)" }}
+                                    >
+                                      {player.name}
+                                    </div>
+                                    <div
+                                      className="text-xs"
+                                      style={{ color: "var(--text-soft)" }}
+                                    >
+                                      {player.correctResults} влучань •{" "}
+                                      {player.wrongHits} промахів
+                                    </div>
+                                  </div>
                                 </div>
-                              ) : (
+                              </td>
+
+                              <td
+                                className="px-4 py-3 text-right text-base font-black tabular-nums"
+                                style={{ color: "var(--text)" }}
+                              >
+                                {player.weightedPoints}
+                              </td>
+
+                              <td
+                                className="px-4 py-3 text-right tabular-nums"
+                                style={{ color: "var(--text-soft)" }}
+                              >
+                                {player.finishedPredictionsCount}
+                              </td>
+
+                              <td
+                                className="px-4 py-3 text-right font-black tabular-nums"
+                                style={{ color: "var(--accent)" }}
+                              >
+                                {formatPercent(player.accuracyRate)}
+                              </td>
+
+                              <td
+                                className="px-4 py-3 text-right tabular-nums"
+                                style={{ color: "var(--text-soft)" }}
+                              >
                                 <span
-                                  className="font-black tabular-nums"
-                                  style={{ color: "var(--muted)" }}
+                                  className="font-black"
+                                  style={{ color: "var(--success)" }}
                                 >
-                                  #{player.rank}
+                                  {player.exactHits}
+                                </span>{" "}
+                                / {formatPercent(player.exactRate)}
+                              </td>
+
+                              <td className="px-4 py-3">
+                                <LastFiveBoxes results={player.last5Results} />
+                              </td>
+
+                              <td className="px-4 py-3 text-right">
+                                <span
+                                  className="inline-flex rounded-full px-2.5 py-1 text-xs font-bold"
+                                  style={getMovementTone(player.movement)}
+                                >
+                                  {formatMovement(player.movement)}
                                 </span>
-                              )}
-                            </td>
-
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-3">
-                                <Avatar
-                                  name={player.name}
-                                  image={player.image}
-                                  size="sm"
-                                />
-
-                                <div className="min-w-0">
-                                  <div
-                                    className="truncate font-black"
-                                    style={{ color: "var(--text)" }}
-                                  >
-                                    {player.name}
-                                  </div>
-                                  <div
-                                    className="text-xs"
-                                    style={{ color: "var(--text-soft)" }}
-                                  >
-                                    {player.correctResults} влучань •{" "}
-                                    {player.wrongHits} промахів
-                                  </div>
-                                </div>
-                              </div>
-                            </td>
-
-                            <td
-                              className="px-4 py-3 text-right text-base font-black tabular-nums"
-                              style={{ color: "var(--text)" }}
-                            >
-                              {player.weightedPoints}
-                            </td>
-
-                            <td
-                              className="px-4 py-3 text-right tabular-nums"
-                              style={{ color: "var(--text-soft)" }}
-                            >
-                              {player.finishedPredictionsCount}
-                            </td>
-
-                            <td
-                              className="px-4 py-3 text-right font-black tabular-nums"
-                              style={{ color: "var(--accent)" }}
-                            >
-                              {formatPercent(player.accuracyRate)}
-                            </td>
-
-                            <td
-                              className="px-4 py-3 text-right tabular-nums"
-                              style={{ color: "var(--text-soft)" }}
-                            >
-                              <span
-                                className="font-black"
-                                style={{ color: "var(--success)" }}
-                              >
-                                {player.exactHits}
-                              </span>{" "}
-                              / {formatPercent(player.exactRate)}
-                            </td>
-
-                            <td className="px-4 py-3">
-                              <LastFiveBoxes results={player.last5Results} />
-                            </td>
-
-                            <td className="px-4 py-3 text-right">
-                              <span
-                                className="inline-flex rounded-full px-2.5 py-1 text-xs font-bold"
-                                style={getMovementTone(player.movement)}
-                              >
-                                {formatMovement(player.movement)}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            </>
-          )}
-        </div>
-      </section>
-
-      <section
-        className="rounded-[28px] px-4 py-4 sm:px-5"
-        style={{
-          background:
-            "linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, transparent), var(--panel-strong))",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div
-              className="text-[10px] font-black uppercase tracking-[0.18em]"
-              style={{ color: "var(--muted)" }}
-            >
-              Leaderboard Arena
-            </div>
-
-            <h1
-              className="mt-1 text-2xl font-black tracking-tight"
-              style={{ color: "var(--text)" }}
-            >
-              Загальна статистика
-            </h1>
-
-            <div className="mt-1 text-sm" style={{ color: "var(--text-soft)" }}>
-              {game.finishedMatchesCount} зіграних матчів •{" "}
-              {game.membersCount} гравців
-              {game.linkedTournamentName ? ` • ${game.linkedTournamentName}` : ""}
-            </div>
+              </>
+            )}
           </div>
+        </section>
 
-          <div className="flex flex-wrap gap-2">
-            <HighlightChip
-              label="Форма"
-              value={highlights.bestForm?.name ?? "—"}
-              accent="warning"
-            />
-            <HighlightChip
-              label="Точність"
-              value={highlights.mostAccurate?.name ?? "—"}
-              accent="success"
-            />
-            <HighlightChip
-              label="В ціль"
-              value={highlights.exactKing?.name ?? "—"}
-            />
-          </div>
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
-          <StatCard
-            label="Усього очок"
-            value={`${totalPoints}`}
-            helper="разом по всіх гравцях"
-          />
-          <StatCard
-            label="Точних рахунків"
-            value={`${totalExactHits}`}
-            helper="попадання рівно в ціль"
-          />
-          <StatCard
-            label="Форма ліги"
-            value={formatPercent(globalAccuracy)}
-            helper="вгадані результати"
-          />
-          <StatCard
-            label="Прогнозів"
-            value={`${totalFinishedPredictions}`}
-            helper="по завершених матчах"
-          />
-        </div>
-      </section>
-
-      {highlights.me ? (
         <section
-          className="rounded-[22px] px-4 py-3"
+          className="rounded-[28px] px-4 py-4 sm:px-5"
           style={{
-            background: "var(--accent-soft)",
-            border:
-              "1px solid color-mix(in srgb, var(--accent) 24%, transparent)",
+            background:
+              "linear-gradient(180deg, color-mix(in srgb, var(--accent) 10%, transparent), var(--panel-strong))",
+            border: "1px solid var(--border)",
           }}
         >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div
-                className="text-[10px] font-black uppercase tracking-[0.16em]"
-                style={{ color: "var(--accent)" }}
+                className="text-[10px] font-black uppercase tracking-[0.18em]"
+                style={{ color: "var(--muted)" }}
               >
-                Твоя позиція
+                Leaderboard Arena
               </div>
-              <div
-                className="mt-1 text-lg font-black"
+
+              <h1
+                className="mt-1 text-2xl font-black tracking-tight"
                 style={{ color: "var(--text)" }}
               >
-                #{highlights.me.rank} • {highlights.me.weightedPoints} очок
+                Загальна статистика
+              </h1>
+
+              <div
+                className="mt-1 text-sm"
+                style={{ color: "var(--text-soft)" }}
+              >
+                {game.finishedMatchesCount} зіграних матчів •{" "}
+                {game.membersCount} гравців
+                {game.linkedTournamentName
+                  ? ` • ${game.linkedTournamentName}`
+                  : ""}
               </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <span
-                className="inline-flex rounded-full px-3 py-1.5 text-xs font-black"
-                style={getMovementTone(highlights.me.movement)}
-              >
-                {formatMovement(highlights.me.movement)} move
-              </span>
-
-              <span
-                className="inline-flex rounded-full px-3 py-1.5 text-xs font-black"
-                style={{
-                  background: "var(--panel)",
-                  color: "var(--text-soft)",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                gap {highlights.me.gapToLeader}
-              </span>
-
-              <span
-                className="inline-flex rounded-full px-3 py-1.5 text-xs font-black"
-                style={{
-                  background: "var(--success-soft)",
-                  color: "var(--success)",
-                  border:
-                    "1px solid color-mix(in srgb, var(--success) 24%, transparent)",
-                }}
-              >
-                {highlights.me.exactHits} exact
-              </span>
-
-              <span
-                className="inline-flex rounded-full px-3 py-1.5 text-xs font-black"
-                style={{
-                  background: "var(--accent-soft)",
-                  color: "var(--accent)",
-                  border:
-                    "1px solid color-mix(in srgb, var(--accent) 24%, transparent)",
-                }}
-              >
-                {formatPercent(highlights.me.accuracyRate)} форма
-              </span>
-
-              <LastFiveBoxes results={highlights.me.last5Results} />
+              <HighlightChip
+                label="Форма"
+                value={highlights.bestForm?.name ?? "—"}
+                accent="warning"
+              />
+              <HighlightChip
+                label="Точність"
+                value={highlights.mostAccurate?.name ?? "—"}
+                accent="success"
+              />
+              <HighlightChip
+                label="В ціль"
+                value={highlights.exactKing?.name ?? "—"}
+              />
             </div>
           </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4">
+            <StatCard
+              label="Усього очок"
+              value={`${totalPoints}`}
+              helper="разом по всіх гравцях"
+            />
+            <StatCard
+              label="Точних рахунків"
+              value={`${totalExactHits}`}
+              helper="попадання рівно в ціль"
+            />
+            <StatCard
+              label="Форма ліги"
+              value={formatPercent(globalAccuracy)}
+              helper="вгадані результати"
+            />
+            <StatCard
+              label="Прогнозів"
+              value={`${totalFinishedPredictions}`}
+              helper="по завершених матчах"
+            />
+          </div>
         </section>
-      ) : null}
-    </div>
+
+        {highlights.me ? (
+          <section
+            className="rounded-[22px] px-4 py-3"
+            style={{
+              background: "var(--accent-soft)",
+              border:
+                "1px solid color-mix(in srgb, var(--accent) 24%, transparent)",
+            }}
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div
+                  className="text-[10px] font-black uppercase tracking-[0.16em]"
+                  style={{ color: "var(--accent)" }}
+                >
+                  Твоя позиція
+                </div>
+                <div
+                  className="mt-1 text-lg font-black"
+                  style={{ color: "var(--text)" }}
+                >
+                  #{highlights.me.rank} • {highlights.me.weightedPoints} очок
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <span
+                  className="inline-flex rounded-full px-3 py-1.5 text-xs font-black"
+                  style={getMovementTone(highlights.me.movement)}
+                >
+                  {formatMovement(highlights.me.movement)} move
+                </span>
+
+                <span
+                  className="inline-flex rounded-full px-3 py-1.5 text-xs font-black"
+                  style={{
+                    background: "var(--panel)",
+                    color: "var(--text-soft)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  gap {highlights.me.gapToLeader}
+                </span>
+
+                <span
+                  className="inline-flex rounded-full px-3 py-1.5 text-xs font-black"
+                  style={{
+                    background: "var(--success-soft)",
+                    color: "var(--success)",
+                    border:
+                      "1px solid color-mix(in srgb, var(--success) 24%, transparent)",
+                  }}
+                >
+                  {highlights.me.exactHits} exact
+                </span>
+
+                <span
+                  className="inline-flex rounded-full px-3 py-1.5 text-xs font-black"
+                  style={{
+                    background: "var(--accent-soft)",
+                    color: "var(--accent)",
+                    border:
+                      "1px solid color-mix(in srgb, var(--accent) 24%, transparent)",
+                  }}
+                >
+                  {formatPercent(highlights.me.accuracyRate)} форма
+                </span>
+
+                <LastFiveBoxes results={highlights.me.last5Results} />
+              </div>
+            </div>
+          </section>
+        ) : null}
+      </div>
+    </>
   );
 }

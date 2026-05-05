@@ -11,6 +11,7 @@ import {
 import { useMemo, useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
+import { FootballLoader } from "~/components/FootballLoader";
 
 const GAME_MEMBER_ROLE = {
   OWNER: "OWNER",
@@ -257,10 +258,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const { currentUser, game, myRole } = await requireGameAdmin(request, gameId);
 
-  // ВАЖЛИВО ДЛЯ SUPABASE/RENDER:
-  // Не запускаємо ці запити паралельно через Promise.all, бо на pooler
-  // легко впертися в EMAXCONNSESSION / max clients reached.
-  // Послідовні запити повільніші на кілька мс, але значно стабільніші.
   const teams = await prisma.team.findMany({
     orderBy: { name: "asc" },
   });
@@ -832,7 +829,10 @@ export default function GameAdminPage() {
     useLoaderData<typeof loader>();
 
   const navigation = useNavigation();
+
+  const isRouteLoading = navigation.state === "loading";
   const isSubmitting = navigation.state === "submitting";
+  const isBusy = isRouteLoading || isSubmitting;
 
   const [finishedLimit, setFinishedLimit] = useState(3);
 
@@ -862,761 +862,805 @@ export default function GameAdminPage() {
   const visibleFinishedMatches = finishedMatches.slice(0, finishedLimit);
 
   return (
-    <div className="space-y-6 pb-10">
-      <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/30 backdrop-blur-xl sm:p-6 md:p-8">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold uppercase tracking-[0.22em] text-white/50">
-              <AdminIcon type="game" />
-              Game Admin
+    <>
+      {isBusy ? <FootballLoader /> : null}
+
+      <div
+        className={`space-y-6 pb-10 transition ${
+          isBusy ? "pointer-events-none select-none opacity-80" : "opacity-100"
+        }`}
+      >
+        <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/30 backdrop-blur-xl sm:p-6 md:p-8">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold uppercase tracking-[0.22em] text-white/50">
+                <AdminIcon type="game" />
+                Game Admin
+              </div>
+
+              <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
+                Адмінка гри {game.name}
+              </h1>
+
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-white/60 sm:text-base">
+                Основне керування грою: код для друзів, турніри, етапи, матчі,
+                live-рахунок, дедлайни та результати прогнозів.
+              </p>
             </div>
 
-            <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
-              Адмінка гри {game.name}
-            </h1>
-
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-white/60 sm:text-base">
-              Основне керування грою: код для друзів, турніри, етапи, матчі,
-              live-рахунок, дедлайни та результати прогнозів.
-            </p>
+            <div className="rounded-[1.5rem] border border-emerald-400/20 bg-emerald-500/10 p-4 lg:min-w-72">
+              <div className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-200/70">
+                Код гри
+              </div>
+              <div className="mt-2 break-all text-3xl font-black tracking-[0.18em] text-emerald-100">
+                {game.inviteCode}
+              </div>
+              <div className="mt-2 text-sm text-emerald-100/70">
+                Цей код даєш друзям для входу в гру.
+              </div>
+            </div>
           </div>
 
-          <div className="rounded-[1.5rem] border border-emerald-400/20 bg-emerald-500/10 p-4 lg:min-w-72">
-            <div className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-200/70">
-              Код гри
-            </div>
-            <div className="mt-2 break-all text-3xl font-black tracking-[0.18em] text-emerald-100">
-              {game.inviteCode}
-            </div>
-            <div className="mt-2 text-sm text-emerald-100/70">
-              Цей код даєш друзям для входу в гру.
-            </div>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              to=".."
+              className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+            >
+              До гри
+            </Link>
+
+            <Link
+              to="../matches"
+              className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+            >
+              Матчі
+            </Link>
+
+            <Link
+              to="../leaderboard"
+              className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+            >
+              Таблиця
+            </Link>
           </div>
-        </div>
+        </section>
 
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Link
-            to=".."
-            className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-          >
-            До гри
-          </Link>
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+            <div className="text-sm text-white/45">Матчів у грі</div>
+            <div className="mt-2 text-3xl font-black">{gameMatches.length}</div>
+          </div>
 
-          <Link
-            to="../matches"
-            className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-          >
-            Матчі
-          </Link>
+          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+            <div className="text-sm text-white/45">Live зараз</div>
+            <div className="mt-2 text-3xl font-black">{liveMatches.length}</div>
+          </div>
 
-          <Link
-            to="../leaderboard"
-            className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
-          >
-            Таблиця
-          </Link>
-        </div>
-      </section>
+          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+            <div className="text-sm text-white/45">Учасників</div>
+            <div className="mt-2 text-3xl font-black">{members.length}</div>
+          </div>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-          <div className="text-sm text-white/45">Матчів у грі</div>
-          <div className="mt-2 text-3xl font-black">{gameMatches.length}</div>
-        </div>
+          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+            <div className="text-sm text-white/45">Турнірів</div>
+            <div className="mt-2 text-3xl font-black">{tournaments.length}</div>
+          </div>
+        </section>
 
-        <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-          <div className="text-sm text-white/45">Live зараз</div>
-          <div className="mt-2 text-3xl font-black">{liveMatches.length}</div>
-        </div>
-
-        <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-          <div className="text-sm text-white/45">Учасників</div>
-          <div className="mt-2 text-3xl font-black">{members.length}</div>
-        </div>
-
-        <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-          <div className="text-sm text-white/45">Турнірів</div>
-          <div className="mt-2 text-3xl font-black">{tournaments.length}</div>
-        </div>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px]">
-        <div className="space-y-6">
-          <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6">
-            <div className="mb-5 flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white">
-                <AdminIcon type="match" />
-              </div>
-
-              <div>
-                <h2 className="text-2xl font-black">
-                  Створити матч і додати в гру
-                </h2>
-                <p className="mt-1 text-sm text-white/50">
-                  Турнір і етап можна не вказувати. Якщо турнір не вибрано,
-                  матч піде в “Без турніру”.
-                </p>
-              </div>
-            </div>
-
-            <Form method="post" className="space-y-5">
-              <input type="hidden" name="intent" value="createAndAddMatch" />
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-white/75">
-                    Домашня команда
-                  </label>
-                  <select
-                    name="homeTeamId"
-                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
-                    required
-                  >
-                    <option value="">Оберіть команду</option>
-                    {teams.map((team) => (
-                      <option key={team.id} value={team.id}>
-                        {team.name}
-                      </option>
-                    ))}
-                  </select>
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px]">
+          <div className="space-y-6">
+            <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6">
+              <div className="mb-5 flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white">
+                  <AdminIcon type="match" />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-white/75">
-                    Гостьова команда
-                  </label>
-                  <select
-                    name="awayTeamId"
-                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
-                    required
-                  >
-                    <option value="">Оберіть команду</option>
-                    {teams.map((team) => (
-                      <option key={team.id} value={team.id}>
-                        {team.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-white/75">
-                    Турнір
-                  </label>
-                  <select
-                    name="tournamentId"
-                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
-                  >
-                    <option value="">Без турніру</option>
-                    {tournaments.map((tournament) => (
-                      <option key={tournament.id} value={tournament.id}>
-                        {tournament.name}
-                        {tournament.season?.yearLabel
-                          ? ` (${tournament.season.yearLabel})`
-                          : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-white/75">
-                    Етап
-                  </label>
-                  <select
-                    name="roundId"
-                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
-                  >
-                    <option value="">Без етапу</option>
-                    {rounds.map((round) => (
-                      <option key={round.id} value={round.id}>
-                        {round.tournament.name} · {round.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-white/75">
-                    Дата і час
-                  </label>
-                  <input
-                    name="startTime"
-                    type="datetime-local"
-                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-white/75">
-                    Дедлайн прогнозу
-                  </label>
-                  <input
-                    name="predictionClosesAt"
-                    type="datetime-local"
-                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-white/75">
-                    Вага матчу
-                  </label>
-                  <input
-                    name="customWeight"
-                    type="number"
-                    min="1"
-                    placeholder="1"
-                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-white/75">
-                    Стадіон
-                  </label>
-                  <input
-                    name="venue"
-                    placeholder="Wembley"
-                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-white/75">
-                    Підпис етапу
-                  </label>
-                  <input
-                    name="stageLabel"
-                    placeholder="1/4 фіналу"
-                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-white/75">
-                    Тур / matchday
-                  </label>
-                  <input
-                    name="matchdayLabel"
-                    placeholder="Тур 1"
-                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                  />
+                  <h2 className="text-2xl font-black">
+                    Створити матч і додати в гру
+                  </h2>
+                  <p className="mt-1 text-sm text-white/50">
+                    Турнір і етап можна не вказувати. Якщо турнір не вибрано,
+                    матч піде в “Без турніру”.
+                  </p>
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90 disabled:opacity-50"
-              >
-                {isSubmitting ? "Збереження..." : "Створити матч"}
-              </button>
-            </Form>
-          </section>
+              <Form method="post" className="space-y-5">
+                <input type="hidden" name="intent" value="createAndAddMatch" />
 
-          <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6">
-            <div className="mb-5 flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white">
-                <AdminIcon type="live" />
-              </div>
-
-              <div>
-                <h2 className="text-2xl font-black">Live і майбутні матчі</h2>
-                <p className="mt-1 text-sm text-white/50">
-                  Тут адмін перемикає матч у Live, оновлює рахунок або завершує
-                  гру.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {activeMatches.length > 0 ? (
-                activeMatches.map((gameMatch) => {
-                  const match = gameMatch.match;
-
-                  return (
-                    <div
-                      key={gameMatch.id}
-                      className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4 sm:p-5"
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white/75">
+                      Домашня команда
+                    </label>
+                    <select
+                      name="homeTeamId"
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                      required
+                      disabled={isSubmitting}
                     >
-                      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                        <div>
-                          <div className="mb-2">
-                            <StatusBadge status={match.status} />
-                          </div>
+                      <option value="">Оберіть команду</option>
+                      {teams.map((team) => (
+                        <option key={team.id} value={team.id}>
+                          {team.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                          <h3 className="text-xl font-black">
-                            {match.homeTeam.name} — {match.awayTeam.name}
-                          </h3>
-
-                          <p className="mt-1 text-sm text-white/50">
-                            {match.tournament.name}
-                            {match.round ? ` · ${match.round.name}` : ""}
-                            {" · "}
-                            {formatDate(match.startTime)}
-                          </p>
-                        </div>
-
-                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-3xl font-black">
-                          {match.homeScore ?? "—"}:{match.awayScore ?? "—"}
-                        </div>
-                      </div>
-
-                      <Form
-                        method="post"
-                        className="grid grid-cols-1 gap-3 md:grid-cols-5"
-                      >
-                        <input
-                          type="hidden"
-                          name="intent"
-                          value="saveResult"
-                        />
-                        <input type="hidden" name="matchId" value={match.id} />
-
-                        <input
-                          name="homeScore"
-                          type="number"
-                          min="0"
-                          defaultValue={match.homeScore ?? ""}
-                          placeholder="Голи 1"
-                          className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                        />
-
-                        <input
-                          name="awayScore"
-                          type="number"
-                          min="0"
-                          defaultValue={match.awayScore ?? ""}
-                          placeholder="Голи 2"
-                          className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                        />
-
-                        <select
-                          name="status"
-                          defaultValue={match.status}
-                          className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
-                        >
-                          <option value="SCHEDULED">Заплановано</option>
-                          <option value="LIVE">Live</option>
-                          <option value="FINISHED">Завершено</option>
-                          <option value="CANCELED">Скасовано</option>
-                          <option value="POSTPONED">Перенесено</option>
-                        </select>
-
-                        <button
-                          type="submit"
-                          className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90 md:col-span-2"
-                        >
-                          Зберегти
-                        </button>
-                      </Form>
-
-                      <Form
-                        method="post"
-                        className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4"
-                      >
-                        <input
-                          type="hidden"
-                          name="intent"
-                          value="updateGameMatchSettings"
-                        />
-                        <input
-                          type="hidden"
-                          name="gameMatchId"
-                          value={gameMatch.id}
-                        />
-
-                        <input
-                          name="customWeight"
-                          type="number"
-                          min="1"
-                          defaultValue={gameMatch.customWeight ?? ""}
-                          placeholder="Вага"
-                          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                        />
-
-                        <input
-                          name="predictionClosesAt"
-                          type="datetime-local"
-                          defaultValue={toDatetimeLocal(
-                            gameMatch.predictionClosesAt
-                          )}
-                          className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none focus:border-white/20"
-                        />
-
-                        <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
-                          <input
-                            type="checkbox"
-                            name="includeInLeaderboard"
-                            defaultChecked={gameMatch.includeInLeaderboard}
-                          />
-                          У таблиці
-                        </label>
-
-                        <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
-                          <input
-                            type="checkbox"
-                            name="isLocked"
-                            defaultChecked={gameMatch.isLocked}
-                          />
-                          Locked
-                        </label>
-
-                        <button
-                          type="submit"
-                          className="rounded-2xl border border-white/10 bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 md:col-span-4"
-                        >
-                          Зберегти налаштування матчу
-                        </button>
-                      </Form>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-6 text-center text-sm text-white/45">
-                  Немає live або майбутніх матчів.
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6">
-            <div className="mb-5 flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white">
-                <AdminIcon type="history" />
-              </div>
-
-              <div>
-                <h2 className="text-2xl font-black">Історія завершених матчів</h2>
-                <p className="mt-1 text-sm text-white/50">
-                  Внизу показуємо тільки 3 останні завершені матчі. Далі можна
-                  догрузити ще 3.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {visibleFinishedMatches.length > 0 ? (
-                visibleFinishedMatches.map((gameMatch) => {
-                  const match = gameMatch.match;
-
-                  return (
-                    <div
-                      key={gameMatch.id}
-                      className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4 sm:p-5"
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white/75">
+                      Гостьова команда
+                    </label>
+                    <select
+                      name="awayTeamId"
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                      required
+                      disabled={isSubmitting}
                     >
-                      <div className="mb-4 flex items-start justify-between gap-3">
-                        <div>
-                          <StatusBadge status={match.status} />
+                      <option value="">Оберіть команду</option>
+                      {teams.map((team) => (
+                        <option key={team.id} value={team.id}>
+                          {team.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                          <h3 className="mt-2 text-xl font-black">
-                            {match.homeTeam.name} — {match.awayTeam.name}
-                          </h3>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white/75">
+                      Турнір
+                    </label>
+                    <select
+                      name="tournamentId"
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                      disabled={isSubmitting}
+                    >
+                      <option value="">Без турніру</option>
+                      {tournaments.map((tournament) => (
+                        <option key={tournament.id} value={tournament.id}>
+                          {tournament.name}
+                          {tournament.season?.yearLabel
+                            ? ` (${tournament.season.yearLabel})`
+                            : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                          <p className="mt-1 text-sm text-white/50">
-                            {match.tournament.name}
-                            {match.round ? ` · ${match.round.name}` : ""}
-                            {" · "}
-                            {formatDate(match.startTime)}
-                          </p>
-                        </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white/75">
+                      Етап
+                    </label>
+                    <select
+                      name="roundId"
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                      disabled={isSubmitting}
+                    >
+                      <option value="">Без етапу</option>
+                      {rounds.map((round) => (
+                        <option key={round.id} value={round.id}>
+                          {round.tournament.name} · {round.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-3xl font-black">
-                          {match.homeScore}:{match.awayScore}
-                        </div>
-                      </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white/75">
+                      Дата і час
+                    </label>
+                    <input
+                      name="startTime"
+                      type="datetime-local"
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                      required
+                      disabled={isSubmitting}
+                    />
+                  </div>
 
-                      <div className="overflow-hidden rounded-[1.25rem] border border-white/10 bg-white/5">
-                        <div className="grid grid-cols-[1fr_80px_80px_auto] gap-3 bg-black/20 px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] text-white/45">
-                          <div>Учасник</div>
-                          <div>Прогноз</div>
-                          <div>Бали</div>
-                          <div className="text-right">Дії</div>
-                        </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white/75">
+                      Дедлайн прогнозу
+                    </label>
+                    <input
+                      name="predictionClosesAt"
+                      type="datetime-local"
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                      disabled={isSubmitting}
+                    />
+                  </div>
 
-                        <div className="divide-y divide-white/10">
-                          {match.predictions.length > 0 ? (
-                            match.predictions.map((prediction) => (
-                              <div
-                                key={prediction.id}
-                                className="grid grid-cols-[1fr_80px_80px_auto] items-center gap-3 px-4 py-4 text-sm"
-                              >
-                                <div className="min-w-0 truncate font-semibold text-white/85">
-                                  <UserName user={prediction.user} />
-                                </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white/75">
+                      Вага матчу
+                    </label>
+                    <input
+                      name="customWeight"
+                      type="number"
+                      min="1"
+                      placeholder="1"
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                      disabled={isSubmitting}
+                    />
+                  </div>
 
-                                <div className="font-bold">
-                                  {prediction.predictedHome}:
-                                  {prediction.predictedAway}
-                                </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white/75">
+                      Стадіон
+                    </label>
+                    <input
+                      name="venue"
+                      placeholder="Wembley"
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                      disabled={isSubmitting}
+                    />
+                  </div>
 
-                                <div className="font-bold">
-                                  {prediction.weightedPointsAwarded}
-                                  <span className="ml-1 text-white/35">
-                                    ({prediction.pointsAwarded})
-                                  </span>
-                                </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white/75">
+                      Підпис етапу
+                    </label>
+                    <input
+                      name="stageLabel"
+                      placeholder="1/4 фіналу"
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                      disabled={isSubmitting}
+                    />
+                  </div>
 
-                                <Form method="post" className="text-right">
-                                  <input
-                                    type="hidden"
-                                    name="intent"
-                                    value="deletePrediction"
-                                  />
-                                  <input
-                                    type="hidden"
-                                    name="predictionId"
-                                    value={prediction.id}
-                                  />
-                                  <button
-                                    type="submit"
-                                    className="rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-white/75 transition hover:bg-white/10"
-                                  >
-                                    Видалити
-                                  </button>
-                                </Form>
-                              </div>
-                            ))
-                          ) : (
-                            <div className="px-4 py-8 text-center text-sm text-white/45">
-                              Для цього матчу ще немає прогнозів.
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <Form method="post" className="mt-4">
-                        <input
-                          type="hidden"
-                          name="intent"
-                          value="removeMatchFromGame"
-                        />
-                        <input
-                          type="hidden"
-                          name="gameMatchId"
-                          value={gameMatch.id}
-                        />
-                        <button
-                          type="submit"
-                          className="rounded-2xl border border-red-400/20 bg-red-500/10 px-5 py-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/15"
-                        >
-                          Прибрати матч з гри
-                        </button>
-                      </Form>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-6 text-center text-sm text-white/45">
-                  Завершених матчів поки немає.
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-white/75">
+                      Тур / matchday
+                    </label>
+                    <input
+                      name="matchdayLabel"
+                      placeholder="Тур 1"
+                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                      disabled={isSubmitting}
+                    />
+                  </div>
                 </div>
-              )}
-            </div>
 
-            {finishedLimit < finishedMatches.length ? (
-              <button
-                type="button"
-                onClick={() => setFinishedLimit((value) => value + 3)}
-                className="mt-5 w-full rounded-2xl border border-white/10 bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15"
-              >
-                Показати ще 3
-              </button>
-            ) : null}
-          </section>
-        </div>
-
-        <aside className="space-y-6">
-          <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-            <div className="mb-5 flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white">
-                <AdminIcon type="cup" />
-              </div>
-
-              <div>
-                <h2 className="text-xl font-black">Додати турнір</h2>
-                <p className="mt-1 text-sm text-white/50">
-                  ЛЧ, ЛЄ, АПЛ, Кубок тощо.
-                </p>
-              </div>
-            </div>
-
-            <Form method="post" className="space-y-3">
-              <input type="hidden" name="intent" value="createTournament" />
-
-              <input
-                name="name"
-                required
-                placeholder="Ліга чемпіонів"
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-              />
-
-              <input
-                name="country"
-                placeholder="Europe / England"
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-              />
-
-              <input
-                name="type"
-                placeholder="LEAGUE / CUP"
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-              />
-
-              <input
-                name="logo"
-                placeholder="/tournaments/ucl.svg"
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-              />
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90 disabled:opacity-50"
-              >
-                Додати турнір
-              </button>
-            </Form>
-          </section>
-
-          <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-            <div className="mb-5 flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white">
-                <AdminIcon type="round" />
-              </div>
-
-              <div>
-                <h2 className="text-xl font-black">Додати етап</h2>
-                <p className="mt-1 text-sm text-white/50">
-                  1 тур, 1/8, 1/4, півфінал, фінал.
-                </p>
-              </div>
-            </div>
-
-            <Form method="post" className="space-y-3">
-              <input type="hidden" name="intent" value="createRound" />
-
-              <select
-                name="tournamentId"
-                required
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
-              >
-                <option value="">Оберіть турнір</option>
-                {tournaments.map((tournament) => (
-                  <option key={tournament.id} value={tournament.id}>
-                    {tournament.name}
-                  </option>
-                ))}
-              </select>
-
-              <input
-                name="name"
-                required
-                placeholder="1/4 фіналу"
-                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-              />
-
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  name="order"
-                  type="number"
-                  placeholder="Порядок"
-                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                />
-
-                <input
-                  name="defaultWeight"
-                  type="number"
-                  min="1"
-                  defaultValue={1}
-                  placeholder="Вага"
-                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90 disabled:opacity-50"
-              >
-                Додати етап
-              </button>
-            </Form>
-          </section>
-
-          <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-black">Запрошення</h3>
-                <p className="mt-1 text-sm text-white/50">
-                  Код гри та додаткові invite-коди.
-                </p>
-              </div>
-
-              <Form method="post">
-                <input type="hidden" name="intent" value="createInvite" />
                 <button
                   type="submit"
-                  className="rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
+                  disabled={isSubmitting}
+                  className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  + Код
+                  {isSubmitting ? "Збереження..." : "Створити матч"}
                 </button>
               </Form>
-            </div>
+            </section>
 
-            <div className="mt-5 space-y-4">
-              {invites.length > 0 ? (
-                invites.map((invite) => (
-                  <div
-                    key={invite.id}
-                    className="rounded-2xl border border-white/10 bg-black/20 p-4"
-                  >
-                    <div className="text-sm font-semibold text-white/70">
-                      Invite
-                    </div>
-
-                    <div className="mt-1 break-all text-lg font-black tracking-[0.14em] text-white">
-                      {invite.code}
-                    </div>
-
-                    <div className="mt-3 text-sm text-white/50">
-                      Використано: {invite.usedCount}
-                      {invite.maxUses === null ? " / ∞" : ` / ${invite.maxUses}`}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-4 text-sm text-white/45">
-                  Додаткових invite-кодів ще немає.
+            <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6">
+              <div className="mb-5 flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white">
+                  <AdminIcon type="live" />
                 </div>
-              )}
-            </div>
-          </section>
 
-          <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-            <h3 className="text-lg font-black">Учасники</h3>
+                <div>
+                  <h2 className="text-2xl font-black">Live і майбутні матчі</h2>
+                  <p className="mt-1 text-sm text-white/50">
+                    Тут адмін перемикає матч у Live, оновлює рахунок або завершує
+                    гру.
+                  </p>
+                </div>
+              </div>
 
-            <div className="mt-4 space-y-3">
-              {members.map((member) => (
-                <div
-                  key={member.id}
-                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4"
+              <div className="space-y-4">
+                {activeMatches.length > 0 ? (
+                  activeMatches.map((gameMatch) => {
+                    const match = gameMatch.match;
+
+                    return (
+                      <div
+                        key={gameMatch.id}
+                        className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4 sm:p-5"
+                      >
+                        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div>
+                            <div className="mb-2">
+                              <StatusBadge status={match.status} />
+                            </div>
+
+                            <h3 className="text-xl font-black">
+                              {match.homeTeam.name} — {match.awayTeam.name}
+                            </h3>
+
+                            <p className="mt-1 text-sm text-white/50">
+                              {match.tournament.name}
+                              {match.round ? ` · ${match.round.name}` : ""}
+                              {" · "}
+                              {formatDate(match.startTime)}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-3xl font-black">
+                            {match.homeScore ?? "—"}:{match.awayScore ?? "—"}
+                          </div>
+                        </div>
+
+                        <Form
+                          method="post"
+                          className="grid grid-cols-1 gap-3 md:grid-cols-5"
+                        >
+                          <input
+                            type="hidden"
+                            name="intent"
+                            value="saveResult"
+                          />
+                          <input type="hidden" name="matchId" value={match.id} />
+
+                          <input
+                            name="homeScore"
+                            type="number"
+                            min="0"
+                            defaultValue={match.homeScore ?? ""}
+                            placeholder="Голи 1"
+                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                            disabled={isSubmitting}
+                          />
+
+                          <input
+                            name="awayScore"
+                            type="number"
+                            min="0"
+                            defaultValue={match.awayScore ?? ""}
+                            placeholder="Голи 2"
+                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                            disabled={isSubmitting}
+                          />
+
+                          <select
+                            name="status"
+                            defaultValue={match.status}
+                            className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                            disabled={isSubmitting}
+                          >
+                            <option value="SCHEDULED">Заплановано</option>
+                            <option value="LIVE">Live</option>
+                            <option value="FINISHED">Завершено</option>
+                            <option value="CANCELED">Скасовано</option>
+                            <option value="POSTPONED">Перенесено</option>
+                          </select>
+
+                          <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 md:col-span-2"
+                          >
+                            {isSubmitting ? "Збереження..." : "Зберегти"}
+                          </button>
+                        </Form>
+
+                        <Form
+                          method="post"
+                          className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4"
+                        >
+                          <input
+                            type="hidden"
+                            name="intent"
+                            value="updateGameMatchSettings"
+                          />
+                          <input
+                            type="hidden"
+                            name="gameMatchId"
+                            value={gameMatch.id}
+                          />
+
+                          <input
+                            name="customWeight"
+                            type="number"
+                            min="1"
+                            defaultValue={gameMatch.customWeight ?? ""}
+                            placeholder="Вага"
+                            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                            disabled={isSubmitting}
+                          />
+
+                          <input
+                            name="predictionClosesAt"
+                            type="datetime-local"
+                            defaultValue={toDatetimeLocal(
+                              gameMatch.predictionClosesAt
+                            )}
+                            className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none focus:border-white/20"
+                            disabled={isSubmitting}
+                          />
+
+                          <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
+                            <input
+                              type="checkbox"
+                              name="includeInLeaderboard"
+                              defaultChecked={gameMatch.includeInLeaderboard}
+                              disabled={isSubmitting}
+                            />
+                            У таблиці
+                          </label>
+
+                          <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/75">
+                            <input
+                              type="checkbox"
+                              name="isLocked"
+                              defaultChecked={gameMatch.isLocked}
+                              disabled={isSubmitting}
+                            />
+                            Locked
+                          </label>
+
+                          <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="rounded-2xl border border-white/10 bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50 md:col-span-4"
+                          >
+                            {isSubmitting
+                              ? "Збереження..."
+                              : "Зберегти налаштування матчу"}
+                          </button>
+                        </Form>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-6 text-center text-sm text-white/45">
+                    Немає live або майбутніх матчів.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6">
+              <div className="mb-5 flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white">
+                  <AdminIcon type="history" />
+                </div>
+
+                <div>
+                  <h2 className="text-2xl font-black">
+                    Історія завершених матчів
+                  </h2>
+                  <p className="mt-1 text-sm text-white/50">
+                    Внизу показуємо тільки 3 останні завершені матчі. Далі можна
+                    догрузити ще 3.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {visibleFinishedMatches.length > 0 ? (
+                  visibleFinishedMatches.map((gameMatch) => {
+                    const match = gameMatch.match;
+
+                    return (
+                      <div
+                        key={gameMatch.id}
+                        className="rounded-[1.5rem] border border-white/10 bg-black/20 p-4 sm:p-5"
+                      >
+                        <div className="mb-4 flex items-start justify-between gap-3">
+                          <div>
+                            <StatusBadge status={match.status} />
+
+                            <h3 className="mt-2 text-xl font-black">
+                              {match.homeTeam.name} — {match.awayTeam.name}
+                            </h3>
+
+                            <p className="mt-1 text-sm text-white/50">
+                              {match.tournament.name}
+                              {match.round ? ` · ${match.round.name}` : ""}
+                              {" · "}
+                              {formatDate(match.startTime)}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-3xl font-black">
+                            {match.homeScore}:{match.awayScore}
+                          </div>
+                        </div>
+
+                        <div className="overflow-hidden rounded-[1.25rem] border border-white/10 bg-white/5">
+                          <div className="grid grid-cols-[1fr_80px_80px_auto] gap-3 bg-black/20 px-4 py-3 text-xs font-bold uppercase tracking-[0.14em] text-white/45">
+                            <div>Учасник</div>
+                            <div>Прогноз</div>
+                            <div>Бали</div>
+                            <div className="text-right">Дії</div>
+                          </div>
+
+                          <div className="divide-y divide-white/10">
+                            {match.predictions.length > 0 ? (
+                              match.predictions.map((prediction) => (
+                                <div
+                                  key={prediction.id}
+                                  className="grid grid-cols-[1fr_80px_80px_auto] items-center gap-3 px-4 py-4 text-sm"
+                                >
+                                  <div className="min-w-0 truncate font-semibold text-white/85">
+                                    <UserName user={prediction.user} />
+                                  </div>
+
+                                  <div className="font-bold">
+                                    {prediction.predictedHome}:
+                                    {prediction.predictedAway}
+                                  </div>
+
+                                  <div className="font-bold">
+                                    {prediction.weightedPointsAwarded}
+                                    <span className="ml-1 text-white/35">
+                                      ({prediction.pointsAwarded})
+                                    </span>
+                                  </div>
+
+                                  <Form method="post" className="text-right">
+                                    <input
+                                      type="hidden"
+                                      name="intent"
+                                      value="deletePrediction"
+                                    />
+                                    <input
+                                      type="hidden"
+                                      name="predictionId"
+                                      value={prediction.id}
+                                    />
+                                    <button
+                                      type="submit"
+                                      disabled={isSubmitting}
+                                      className="rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-white/75 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                      Видалити
+                                    </button>
+                                  </Form>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="px-4 py-8 text-center text-sm text-white/45">
+                                Для цього матчу ще немає прогнозів.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <Form method="post" className="mt-4">
+                          <input
+                            type="hidden"
+                            name="intent"
+                            value="removeMatchFromGame"
+                          />
+                          <input
+                            type="hidden"
+                            name="gameMatchId"
+                            value={gameMatch.id}
+                          />
+                          <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="rounded-2xl border border-red-400/20 bg-red-500/10 px-5 py-3 text-sm font-semibold text-red-200 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Прибрати матч з гри
+                          </button>
+                        </Form>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-6 text-center text-sm text-white/45">
+                    Завершених матчів поки немає.
+                  </div>
+                )}
+              </div>
+
+              {finishedLimit < finishedMatches.length ? (
+                <button
+                  type="button"
+                  onClick={() => setFinishedLimit((value) => value + 3)}
+                  className="mt-5 w-full rounded-2xl border border-white/10 bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15"
                 >
-                  <div className="font-bold">
-                    <UserName user={member.user} />
-                  </div>
+                  Показати ще 3
+                </button>
+              ) : null}
+            </section>
+          </div>
 
-                  <div className="mt-1 text-sm text-white/50">
-                    {member.role} ·{" "}
-                    {new Date(member.joinedAt).toLocaleDateString("uk-UA")}
-                  </div>
+          <aside className="space-y-6">
+            <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+              <div className="mb-5 flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white">
+                  <AdminIcon type="cup" />
                 </div>
-              ))}
-            </div>
-          </section>
-        </aside>
-      </section>
-    </div>
+
+                <div>
+                  <h2 className="text-xl font-black">Додати турнір</h2>
+                  <p className="mt-1 text-sm text-white/50">
+                    ЛЧ, ЛЄ, АПЛ, Кубок тощо.
+                  </p>
+                </div>
+              </div>
+
+              <Form method="post" className="space-y-3">
+                <input type="hidden" name="intent" value="createTournament" />
+
+                <input
+                  name="name"
+                  required
+                  placeholder="Ліга чемпіонів"
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                  disabled={isSubmitting}
+                />
+
+                <input
+                  name="country"
+                  placeholder="Europe / England"
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                  disabled={isSubmitting}
+                />
+
+                <input
+                  name="type"
+                  placeholder="LEAGUE / CUP"
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                  disabled={isSubmitting}
+                />
+
+                <input
+                  name="logo"
+                  placeholder="/tournaments/ucl.svg"
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                  disabled={isSubmitting}
+                />
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isSubmitting ? "Збереження..." : "Додати турнір"}
+                </button>
+              </Form>
+            </section>
+
+            <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+              <div className="mb-5 flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white">
+                  <AdminIcon type="round" />
+                </div>
+
+                <div>
+                  <h2 className="text-xl font-black">Додати етап</h2>
+                  <p className="mt-1 text-sm text-white/50">
+                    1 тур, 1/8, 1/4, півфінал, фінал.
+                  </p>
+                </div>
+              </div>
+
+              <Form method="post" className="space-y-3">
+                <input type="hidden" name="intent" value="createRound" />
+
+                <select
+                  name="tournamentId"
+                  required
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                  disabled={isSubmitting}
+                >
+                  <option value="">Оберіть турнір</option>
+                  {tournaments.map((tournament) => (
+                    <option key={tournament.id} value={tournament.id}>
+                      {tournament.name}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  name="name"
+                  required
+                  placeholder="1/4 фіналу"
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                  disabled={isSubmitting}
+                />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    name="order"
+                    type="number"
+                    placeholder="Порядок"
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                    disabled={isSubmitting}
+                  />
+
+                  <input
+                    name="defaultWeight"
+                    type="number"
+                    min="1"
+                    defaultValue={1}
+                    placeholder="Вага"
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isSubmitting ? "Збереження..." : "Додати етап"}
+                </button>
+              </Form>
+            </section>
+
+            <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-black">Запрошення</h3>
+                  <p className="mt-1 text-sm text-white/50">
+                    Код гри та додаткові invite-коди.
+                  </p>
+                </div>
+
+                <Form method="post">
+                  <input type="hidden" name="intent" value="createInvite" />
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    + Код
+                  </button>
+                </Form>
+              </div>
+
+              <div className="mt-5 space-y-4">
+                {invites.length > 0 ? (
+                  invites.map((invite) => (
+                    <div
+                      key={invite.id}
+                      className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                    >
+                      <div className="text-sm font-semibold text-white/70">
+                        Invite
+                      </div>
+
+                      <div className="mt-1 break-all text-lg font-black tracking-[0.14em] text-white">
+                        {invite.code}
+                      </div>
+
+                      <div className="mt-3 text-sm text-white/50">
+                        Використано: {invite.usedCount}
+                        {invite.maxUses === null
+                          ? " / ∞"
+                          : ` / ${invite.maxUses}`}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-4 text-sm text-white/45">
+                    Додаткових invite-кодів ще немає.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+              <h3 className="text-lg font-black">Учасники</h3>
+
+              <div className="mt-4 space-y-3">
+                {members.map((member) => (
+                  <div
+                    key={member.id}
+                    className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4"
+                  >
+                    <div className="font-bold">
+                      <UserName user={member.user} />
+                    </div>
+
+                    <div className="mt-1 text-sm text-white/50">
+                      {member.role} ·{" "}
+                      {new Date(member.joinedAt).toLocaleDateString("uk-UA")}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </aside>
+        </section>
+      </div>
+    </>
   );
 }

@@ -1,12 +1,14 @@
 import {
   Link,
   useLoaderData,
+  useNavigation,
   data,
   type LoaderFunctionArgs,
 } from "react-router";
 import { useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
+import { FootballLoader } from "~/components/FootballLoader";
 
 type TeamLike = {
   id: string;
@@ -211,7 +213,7 @@ function getStatusLabel(status: string) {
 }
 
 function getTeamLogoSrc(team: TeamLike) {
-  if (team.logo) return team.logo;
+  if (team.logo) return `/teams/${team.logo}.svg`;
   if (team.shortName) return `/teams/${team.shortName}.svg`;
   if (team.tla) return `/teams/${team.tla}.svg`;
   return null;
@@ -244,7 +246,8 @@ function getSectionStyle(tone: SectionTone) {
 
     case "upcoming":
       return {
-        panel: "border-[color-mix(in_srgb,var(--accent)_22%,transparent)] bg-[var(--accent-soft)]",
+        panel:
+          "border-[color-mix(in_srgb,var(--accent)_22%,transparent)] bg-[var(--accent-soft)]",
         title: "text-[var(--accent-text)]",
         badge:
           "bg-[var(--accent-soft)] text-[var(--accent-text)] ring-[color-mix(in_srgb,var(--accent)_28%,transparent)]",
@@ -264,16 +267,16 @@ function getSectionStyle(tone: SectionTone) {
         score: "text-[var(--success-readable)]",
       };
 
-      case "warn":
-        return {
-          panel: "border-amber-400/15 bg-amber-500/[0.04]",
-          title: "text-[var(--warning-readable)]",
-          badge:
-            "bg-[var(--warning-soft)] text-[var(--warning-readable)] ring-[color-mix(in_srgb,var(--warning)_28%,transparent)]",
-          line: "from-[var(--warning)]",
-          row: "border-amber-400/10 hover:bg-amber-500/[0.06]",
-          score: "text-[var(--warning-readable)]",
-        };
+    case "warn":
+      return {
+        panel: "border-amber-400/15 bg-amber-500/[0.04]",
+        title: "text-[var(--warning-readable)]",
+        badge:
+          "bg-[var(--warning-soft)] text-[var(--warning-readable)] ring-[color-mix(in_srgb,var(--warning)_28%,transparent)]",
+        line: "from-[var(--warning)]",
+        row: "border-amber-400/10 hover:bg-amber-500/[0.06]",
+        score: "text-[var(--warning-readable)]",
+      };
 
     case "muted":
       return {
@@ -641,6 +644,8 @@ function TinyJump({
 }
 
 export default function MatchesPage() {
+  const navigation = useNavigation();
+
   const {
     gameId,
     upcomingMatches,
@@ -651,157 +656,169 @@ export default function MatchesPage() {
     counts,
   } = useLoaderData<typeof loader>();
 
+  const isRouteLoading = navigation.state === "loading";
+  const isSubmitting = navigation.state === "submitting";
+  const isBusy = isRouteLoading || isSubmitting;
+
   const heroMatch = liveMatches[0] || upcomingMatches[0] || null;
 
   const heroTone: SectionTone =
     heroMatch && isLiveStatus(heroMatch.status) ? "live" : "upcoming";
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
-      <section className="theme-panel rounded-[2rem] p-5 sm:p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="theme-muted text-xs font-black uppercase tracking-[0.25em]">
-              Game matches
-            </div>
+    <>
+      {isBusy ? <FootballLoader /> : null}
 
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-[var(--text)]">
-              Матчі
-            </h1>
-
-            <p className="mt-1 text-sm text-[var(--text-soft)]">
-              Розділено по статусах, щоб не змішувати майбутні, live та
-              завершені матчі.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <TinyJump
-              href="#live"
-              label="LIVE"
-              count={counts.live}
-              tone="live"
-            />
-
-            <TinyJump
-              href="#upcoming"
-              label="Скоро"
-              count={counts.upcoming}
-              tone="upcoming"
-            />
-
-            <TinyJump
-              href="#finished"
-              label="Готово"
-              count={counts.finished}
-              tone="done"
-            />
-
-            {counts.postponed > 0 ? (
-              <TinyJump
-                href="#postponed"
-                label="Пауза"
-                count={counts.postponed}
-                tone="warn"
-              />
-            ) : null}
-
-            {counts.canceled > 0 ? (
-              <TinyJump
-                href="#canceled"
-                label="Стоп"
-                count={counts.canceled}
-                tone="muted"
-              />
-            ) : null}
-          </div>
-        </div>
-      </section>
-
-      {heroMatch ? (
-        <section className="theme-panel rounded-[2rem] p-4 sm:p-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
+      <div
+        className={`mx-auto max-w-5xl space-y-5 transition ${
+          isBusy ? "pointer-events-none select-none opacity-80" : "opacity-100"
+        }`}
+      >
+        <section className="theme-panel rounded-[2rem] p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-lg font-black text-[var(--text)]">
-                {isLiveStatus(heroMatch.status)
-                  ? "Матч прямо зараз"
-                  : "Найближчий матч"}
-              </h2>
+              <div className="theme-muted text-xs font-black uppercase tracking-[0.25em]">
+                Game matches
+              </div>
 
-              <p className="text-sm text-[var(--text-soft)]">
-                Головний матч винесено окремо, але він також залишається у
-                своєму списку нижче.
+              <h1 className="mt-2 text-3xl font-black tracking-tight text-[var(--text)]">
+                Матчі
+              </h1>
+
+              <p className="mt-1 text-sm text-[var(--text-soft)]">
+                Розділено по статусах, щоб не змішувати майбутні, live та
+                завершені матчі.
               </p>
             </div>
+
+            <div className="flex flex-wrap gap-2">
+              <TinyJump
+                href="#live"
+                label="LIVE"
+                count={counts.live}
+                tone="live"
+              />
+
+              <TinyJump
+                href="#upcoming"
+                label="Скоро"
+                count={counts.upcoming}
+                tone="upcoming"
+              />
+
+              <TinyJump
+                href="#finished"
+                label="Готово"
+                count={counts.finished}
+                tone="done"
+              />
+
+              {counts.postponed > 0 ? (
+                <TinyJump
+                  href="#postponed"
+                  label="Пауза"
+                  count={counts.postponed}
+                  tone="warn"
+                />
+              ) : null}
+
+              {counts.canceled > 0 ? (
+                <TinyJump
+                  href="#canceled"
+                  label="Стоп"
+                  count={counts.canceled}
+                  tone="muted"
+                />
+              ) : null}
+            </div>
           </div>
-
-          <MatchRow
-            match={heroMatch}
-            gameId={gameId}
-            tone={heroTone}
-            featured
-          />
         </section>
-      ) : null}
 
-      <MatchSection
-        id="live"
-        title="LIVE матчі"
-        subtitle="Усі матчі, які зараз у грі або на перерві."
-        tone="live"
-        matches={liveMatches}
-        gameId={gameId}
-        emptyText="Зараз немає live матчів."
-        initialVisible={4}
-      />
+        {heroMatch ? (
+          <section className="theme-panel rounded-[2rem] p-4 sm:p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-black text-[var(--text)]">
+                  {isLiveStatus(heroMatch.status)
+                    ? "Матч прямо зараз"
+                    : "Найближчий матч"}
+                </h2>
 
-      <MatchSection
-        id="upcoming"
-        title="Найближчі матчі"
-        subtitle="Усі майбутні матчі гри."
-        tone="upcoming"
-        matches={upcomingMatches}
-        gameId={gameId}
-        emptyText="Найближчих матчів поки немає."
-        initialVisible={6}
-      />
+                <p className="text-sm text-[var(--text-soft)]">
+                  Головний матч винесено окремо, але він також залишається у
+                  своєму списку нижче.
+                </p>
+              </div>
+            </div>
 
-      <MatchSection
-        id="finished"
-        title="Завершені матчі"
-        subtitle="Історія зіграних матчів та результатів."
-        tone="done"
-        matches={finishedMatches}
-        gameId={gameId}
-        emptyText="Завершених матчів ще немає."
-        initialVisible={4}
-      />
+            <MatchRow
+              match={heroMatch}
+              gameId={gameId}
+              tone={heroTone}
+              featured
+            />
+          </section>
+        ) : null}
 
-      {counts.postponed > 0 ? (
         <MatchSection
-          id="postponed"
-          title="Перенесені матчі"
-          subtitle="Матчі, які тимчасово поставлені на паузу."
-          tone="warn"
-          matches={postponedMatches}
+          id="live"
+          title="LIVE матчі"
+          subtitle="Усі матчі, які зараз у грі або на перерві."
+          tone="live"
+          matches={liveMatches}
           gameId={gameId}
-          emptyText="Перенесених матчів немає."
+          emptyText="Зараз немає live матчів."
           initialVisible={4}
         />
-      ) : null}
 
-      {counts.canceled > 0 ? (
         <MatchSection
-          id="canceled"
-          title="Скасовані матчі"
-          subtitle="Матчі, які більше не активні."
-          tone="muted"
-          matches={canceledMatches}
+          id="upcoming"
+          title="Найближчі матчі"
+          subtitle="Усі майбутні матчі гри."
+          tone="upcoming"
+          matches={upcomingMatches}
           gameId={gameId}
-          emptyText="Скасованих матчів немає."
+          emptyText="Найближчих матчів поки немає."
+          initialVisible={6}
+        />
+
+        <MatchSection
+          id="finished"
+          title="Завершені матчі"
+          subtitle="Історія зіграних матчів та результатів."
+          tone="done"
+          matches={finishedMatches}
+          gameId={gameId}
+          emptyText="Завершених матчів ще немає."
           initialVisible={4}
         />
-      ) : null}
-    </div>
+
+        {counts.postponed > 0 ? (
+          <MatchSection
+            id="postponed"
+            title="Перенесені матчі"
+            subtitle="Матчі, які тимчасово поставлені на паузу."
+            tone="warn"
+            matches={postponedMatches}
+            gameId={gameId}
+            emptyText="Перенесених матчів немає."
+            initialVisible={4}
+          />
+        ) : null}
+
+        {counts.canceled > 0 ? (
+          <MatchSection
+            id="canceled"
+            title="Скасовані матчі"
+            subtitle="Матчі, які більше не активні."
+            tone="muted"
+            matches={canceledMatches}
+            gameId={gameId}
+            emptyText="Скасованих матчів немає."
+            initialVisible={4}
+          />
+        ) : null}
+      </div>
+    </>
   );
 }
