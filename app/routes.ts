@@ -34,6 +34,10 @@ export default [
     route("members", "routes/game/members.tsx"),
     route("settings", "routes/game/settings.tsx"),
     route("admin", "routes/game/admin.tsx"),
+    route("chat", "routes/game/chat.tsx", [
+      index("routes/game/chat-index.tsx"),
+      route(":chatId", "routes/game/chat-details.tsx"),
+    ]),
   ]),
 
 

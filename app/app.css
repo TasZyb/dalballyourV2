@@ -458,15 +458,5 @@ body {
 .theme-table-row:hover {
   background: var(--table-hover);
 }
-@keyframes spin-slow {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.animate-spin-slow {
-  animation: spin-slow 1.8s linear infinite;
-}
+@keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } 
+.animate-spin-slow { animation: spin-slow 1.8s linear infinite; }
