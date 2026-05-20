@@ -3,7 +3,6 @@ import {
   redirect,
   useFetcher,
   useLoaderData,
-  useRevalidator,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "react-router";
@@ -427,15 +426,16 @@ function MessageBubble({
 export default function ChatDetailsPage() {
   const { currentUser, chat } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
-  const revalidator = useRevalidator();
 
   const [messages, setMessages] = useState<MessageItem[]>(chat.messages);
   const [text, setText] = useState("");
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
-  const formRef = useRef<HTMLFormElement | null>(null);
   const clientMessageIdRef = useRef<HTMLInputElement | null>(null);
   const lastClientMessageIdRef = useRef<string | null>(null);
+  const lastSubmittedTextRef = useRef<string | null>(null);
+  const processedActionMessageIdsRef = useRef<Set<string>>(new Set());
+  const socketRef = useRef<ReturnType<typeof io> | null>(null);
 
   const isSubmitting = fetcher.state !== "idle";
 
@@ -465,13 +465,14 @@ export default function ChatDetailsPage() {
         : window.location.origin
     );
 
+    socketRef.current = socket;
+
     socket.emit("chat:join", {
       chatId: chat.id,
     });
 
     socket.on("chat:new-message", (message: MessageItem) => {
       setMessages((current) => mergeIncomingMessage(current, message));
-      revalidator.revalidate();
     });
 
     return () => {
@@ -480,8 +481,9 @@ export default function ChatDetailsPage() {
       });
 
       socket.disconnect();
+      socketRef.current = null;
     };
-  }, [chat.id, chat.isClosed, revalidator]);
+  }, [chat.id, chat.isClosed]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({
@@ -492,15 +494,19 @@ export default function ChatDetailsPage() {
 
   useEffect(() => {
     if (fetcher.data?.ok) {
-      setText("");
-      formRef.current?.reset();
-      setMessages((current) =>
-        fetcher.data?.message
-          ? mergeIncomingMessage(current, fetcher.data.message)
-          : current
-      );
-      revalidator.revalidate();
+      const message = fetcher.data.message;
+
+      setMessages((current) => mergeIncomingMessage(current, message));
       lastClientMessageIdRef.current = null;
+      lastSubmittedTextRef.current = null;
+
+      if (!processedActionMessageIdsRef.current.has(message.id)) {
+        processedActionMessageIdsRef.current.add(message.id);
+        socketRef.current?.emit("chat:message-created", {
+          chatId: chat.id,
+          message,
+        });
+      }
     } else if (fetcher.data && !fetcher.data.ok) {
       const failedClientMessageId = lastClientMessageIdRef.current;
 
@@ -513,8 +519,15 @@ export default function ChatDetailsPage() {
           )
         );
       }
+
+      if (lastSubmittedTextRef.current) {
+        setText(
+          (currentText) => currentText || lastSubmittedTextRef.current || ""
+        );
+        lastSubmittedTextRef.current = null;
+      }
     }
-  }, [fetcher.data, revalidator]);
+  }, [chat.id, fetcher.data]);
 
   const statusText = useMemo(() => {
     if (!chat.match) return "Загальний чат";
@@ -558,6 +571,7 @@ export default function ChatDetailsPage() {
     }
 
     lastClientMessageIdRef.current = optimisticMessage.clientMessageId || null;
+    lastSubmittedTextRef.current = value;
 
     setMessages((current) => [...current, optimisticMessage]);
     setText("");
@@ -682,7 +696,6 @@ export default function ChatDetailsPage() {
           </div>
         ) : (
           <fetcher.Form
-            ref={formRef}
             method="post"
             className="flex items-end gap-2"
             onSubmit={handleSubmit}
