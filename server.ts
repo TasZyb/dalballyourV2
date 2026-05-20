@@ -29,7 +29,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// ВАЖЛИВО: роздаємо CSS/JS/assets
 app.use(
   express.static(path.join(process.cwd(), "build/client"), {
     immutable: true,
@@ -37,7 +36,7 @@ app.use(
   })
 );
 
-// favicon/public файли, якщо є
+
 app.use(express.static(path.join(process.cwd(), "public")));
 
 app.use(

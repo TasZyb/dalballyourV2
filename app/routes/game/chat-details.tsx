@@ -421,7 +421,11 @@ export default function ChatDetailsPage() {
   useEffect(() => {
     if (chat.isClosed) return;
 
-    const socket = io();
+    const socket = io(
+      import.meta.env.DEV
+        ? "http://localhost:10000"
+        : window.location.origin
+    );
 
     socket.emit("chat:join", {
       chatId: chat.id,

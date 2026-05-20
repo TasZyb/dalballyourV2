@@ -6,7 +6,8 @@
     "build": "prisma generate && react-router build",
     "dev": "react-router dev",
     "start": "tsx server.ts",
-    "typecheck": "react-router typegen && tsc"
+    "typecheck": "react-router typegen && tsc",
+    "socket:dev": "nodemon server.js"
   },
   "dependencies": {
     "@auth/core": "^0.41.1",
@@ -29,6 +30,7 @@
     "@types/node": "^22",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "nodemon": "^3.1.14",
     "tailwindcss": "^4.1.13",
     "tsx": "^4.21.0",
     "typescript": "^5.9.2",
