@@ -9,6 +9,7 @@ import { useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 import { FootballLoader } from "~/components/FootballLoader";
+import { getTeamLogoSrc, getTournamentLogoSrc } from "~/lib/logo-utils";
 
 type TeamLike = {
   id: string;
@@ -210,21 +211,6 @@ function getStatusLabel(status: string) {
     default:
       return status;
   }
-}
-
-function getTeamLogoSrc(team: TeamLike) {
-  if (team.logo) return `/teams/${team.logo}.svg`;
-  if (team.shortName) return `/teams/${team.shortName}.svg`;
-  if (team.tla) return `/teams/${team.tla}.svg`;
-  return null;
-}
-
-function getTournamentLogoSrc(tournament?: TournamentLike | null) {
-  if (!tournament?.logo) return null;
-
-  return tournament.logo.startsWith("/")
-    ? tournament.logo
-    : `/teams/${tournament.logo}.svg`;
 }
 
 function getTournamentSubLabel(match: MatchItem) {

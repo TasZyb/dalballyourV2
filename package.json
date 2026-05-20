@@ -7,7 +7,7 @@
     "dev": "react-router dev",
     "start": "tsx server.ts",
     "typecheck": "react-router typegen && tsc",
-    "socket:dev": "nodemon server.js"
+    "socket:dev": "nodemon --exec tsx server.ts"
   },
   "dependencies": {
     "@auth/core": "^0.41.1",

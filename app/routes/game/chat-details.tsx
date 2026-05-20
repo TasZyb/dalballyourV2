@@ -11,6 +11,7 @@ import { io } from "socket.io-client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
+import { getIO } from "~/lib/socket.server";
 
 const MATCH_STATUS = {
   SCHEDULED: "SCHEDULED",
@@ -34,6 +35,7 @@ type MessageItem = {
   createdAt: string;
   userId: string;
   optimistic?: boolean;
+  clientMessageId?: string | null;
   user: {
     id: string;
     name: string | null;
@@ -64,6 +66,32 @@ function getInitials(name: string) {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("");
+}
+
+function mergeIncomingMessage(current: MessageItem[], incoming: MessageItem) {
+  const existingIndex = current.findIndex((item) => item.id === incoming.id);
+
+  if (existingIndex >= 0) {
+    const next = [...current];
+    next[existingIndex] = incoming;
+    return next;
+  }
+
+  const optimisticIndex =
+    incoming.clientMessageId == null
+      ? -1
+      : current.findIndex(
+          (item) =>
+            item.optimistic && item.clientMessageId === incoming.clientMessageId
+        );
+
+  if (optimisticIndex >= 0) {
+    const next = [...current];
+    next[optimisticIndex] = incoming;
+    return next;
+  }
+
+  return [...current, incoming];
 }
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
@@ -200,6 +228,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const formData = await request.formData();
   const text = String(formData.get("text") || "").trim();
+  const clientMessageId = String(formData.get("clientMessageId") || "")
+    .trim()
+    .slice(0, 80);
 
   if (!text) {
     return data({ ok: false, error: "Порожнє повідомлення" }, { status: 400 });
@@ -289,17 +320,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
     },
   });
 
+  const payload: MessageItem = {
+    id: message.id,
+    text: message.text,
+    isDeleted: message.isDeleted,
+    isEdited: message.isEdited,
+    createdAt: message.createdAt.toISOString(),
+    userId: message.userId,
+    clientMessageId: clientMessageId || null,
+    user: message.user,
+  };
+
+  getIO()?.to(`chat:${chatId}`).emit("chat:new-message", payload);
+
   return data({
     ok: true,
-    message: {
-      id: message.id,
-      text: message.text,
-      isDeleted: message.isDeleted,
-      isEdited: message.isEdited,
-      createdAt: message.createdAt.toISOString(),
-      userId: message.userId,
-      user: message.user,
-    },
+    message: payload,
   });
 }
 
@@ -398,6 +434,8 @@ export default function ChatDetailsPage() {
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const formRef = useRef<HTMLFormElement | null>(null);
+  const clientMessageIdRef = useRef<HTMLInputElement | null>(null);
+  const lastClientMessageIdRef = useRef<string | null>(null);
 
   const isSubmitting = fetcher.state !== "idle";
 
@@ -432,13 +470,8 @@ export default function ChatDetailsPage() {
     });
 
     socket.on("chat:new-message", (message: MessageItem) => {
-      setMessages((current) => {
-        if (current.some((item) => item.id === message.id)) {
-          return current;
-        }
-
-        return [...current.filter((item) => !item.optimistic), message];
-      });
+      setMessages((current) => mergeIncomingMessage(current, message));
+      revalidator.revalidate();
     });
 
     return () => {
@@ -448,7 +481,7 @@ export default function ChatDetailsPage() {
 
       socket.disconnect();
     };
-  }, [chat.id, chat.isClosed]);
+  }, [chat.id, chat.isClosed, revalidator]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({
@@ -461,7 +494,25 @@ export default function ChatDetailsPage() {
     if (fetcher.data?.ok) {
       setText("");
       formRef.current?.reset();
+      setMessages((current) =>
+        fetcher.data?.message
+          ? mergeIncomingMessage(current, fetcher.data.message)
+          : current
+      );
       revalidator.revalidate();
+      lastClientMessageIdRef.current = null;
+    } else if (fetcher.data && !fetcher.data.ok) {
+      const failedClientMessageId = lastClientMessageIdRef.current;
+
+      if (failedClientMessageId) {
+        setMessages((current) =>
+          current.filter(
+            (item) =>
+              !item.optimistic ||
+              item.clientMessageId !== failedClientMessageId
+          )
+        );
+      }
     }
   }, [fetcher.data, revalidator]);
 
@@ -482,13 +533,18 @@ export default function ChatDetailsPage() {
     }
 
     const optimisticMessage: MessageItem = {
-      id: `optimistic-${Date.now()}`,
+      id: `optimistic-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`,
       text: value,
       isDeleted: false,
       isEdited: false,
       createdAt: new Date().toISOString(),
       userId: currentUser.id,
       optimistic: true,
+      clientMessageId: `client-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`,
       user: {
         id: currentUser.id,
         name: currentUser.name,
@@ -496,6 +552,12 @@ export default function ChatDetailsPage() {
         image: currentUser.image,
       },
     };
+
+    if (clientMessageIdRef.current) {
+      clientMessageIdRef.current.value = optimisticMessage.clientMessageId || "";
+    }
+
+    lastClientMessageIdRef.current = optimisticMessage.clientMessageId || null;
 
     setMessages((current) => [...current, optimisticMessage]);
     setText("");
@@ -625,6 +687,8 @@ export default function ChatDetailsPage() {
             className="flex items-end gap-2"
             onSubmit={handleSubmit}
           >
+            <input ref={clientMessageIdRef} type="hidden" name="clientMessageId" />
+
             <textarea
               name="text"
               value={text}

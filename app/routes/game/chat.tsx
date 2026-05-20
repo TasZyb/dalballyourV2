@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 import { FootballLoader } from "~/components/FootballLoader";
+import { getTeamLogoSrc } from "~/lib/logo-utils";
 
 const CHAT_TYPE = {
   GENERAL: "GENERAL",
@@ -243,26 +244,64 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Forbidden", { status: 403 });
   }
 
-  let generalChat = await prisma.chat.findFirst({
+  let [generalChat, ...duplicateGeneralChats] = await prisma.chat.findMany({
     where: {
       gameId,
       type: CHAT_TYPE.GENERAL,
       matchId: null,
+      isActive: true,
     },
     select: { id: true },
+    orderBy: [
+      { isPinned: "desc" },
+      { createdAt: "asc" },
+    ],
   });
 
-  if (!generalChat) {
-    generalChat = await prisma.chat.create({
-      data: {
-        gameId,
-        type: CHAT_TYPE.GENERAL,
-        title: "Загальний чат",
-        description: "Спільна переписка для всієї гри",
-        isPinned: true,
+  if (duplicateGeneralChats.length > 0) {
+    await prisma.chat.updateMany({
+      where: {
+        id: {
+          in: duplicateGeneralChats.map((chat) => chat.id),
+        },
       },
-      select: { id: true },
+      data: {
+        isActive: false,
+      },
     });
+  }
+
+  if (!generalChat) {
+    try {
+      generalChat = await prisma.chat.create({
+        data: {
+          gameId,
+          type: CHAT_TYPE.GENERAL,
+          title: "Загальний чат",
+          description: "Спільна переписка для всієї гри",
+          isPinned: true,
+        },
+        select: { id: true },
+      });
+    } catch {
+      generalChat = await prisma.chat.findFirst({
+        where: {
+          gameId,
+          type: CHAT_TYPE.GENERAL,
+          matchId: null,
+          isActive: true,
+        },
+        select: { id: true },
+        orderBy: [
+          { isPinned: "desc" },
+          { createdAt: "asc" },
+        ],
+      });
+    }
+  }
+
+  if (!generalChat) {
+    throw new Response("Chat not found", { status: 500 });
   }
 
   const matchIds = game.gameMatches.map((gameMatch) => gameMatch.matchId);
@@ -399,16 +438,22 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 }
 
 function TeamLogo({
-  logo,
+  team,
   name,
 }: {
-  logo?: string | null;
+  team?: {
+    logo?: string | null;
+    shortName?: string | null;
+    name: string;
+  } | null;
   name: string;
 }) {
-  if (logo) {
+  const logoSrc = getTeamLogoSrc(team);
+
+  if (logoSrc) {
     return (
       <img
-        src={logo}
+        src={logoSrc}
         alt={name}
         className="h-7 w-7 rounded-full object-contain"
         style={{
@@ -474,12 +519,12 @@ function ChatNavItem({
         ) : (
           <div className="relative flex h-9 w-9 shrink-0 items-center justify-center">
             <TeamLogo
-              logo={chat.match?.homeTeam.logo}
+              team={chat.match?.homeTeam}
               name={chat.match?.homeTeam.name || "Home"}
             />
             <div className="absolute bottom-0 right-0">
               <TeamLogo
-                logo={chat.match?.awayTeam.logo}
+                team={chat.match?.awayTeam}
                 name={chat.match?.awayTeam.name || "Away"}
               />
             </div>

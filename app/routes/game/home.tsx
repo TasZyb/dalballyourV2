@@ -9,6 +9,7 @@ import { MatchStatus } from "@prisma/client";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 import { FootballLoader } from "~/components/FootballLoader";
+import { getTeamLogoSrc, getTournamentLogoSrc } from "~/lib/logo-utils";
 
 type TeamLike = {
   id: string;
@@ -143,18 +144,6 @@ function getStatusClasses(status: string) {
     default:
       return "border-[var(--border)] bg-[var(--panel)] text-[var(--text-soft)]";
   }
-}
-
-function getTeamLogoSrc(team: TeamLike) {
-  if (team.logo) return team.logo;
-  if (team.shortName) return `/teams/${team.shortName}.svg`;
-  return null;
-}
-
-function getTournamentLogoSrc(tournament?: TournamentLike | null) {
-  if (!tournament) return null;
-  if (tournament.logo) return `/teams/${tournament.logo}.svg`;
-  return null;
 }
 
 function getTournamentSubLabel(match: {

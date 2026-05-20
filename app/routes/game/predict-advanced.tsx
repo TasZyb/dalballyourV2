@@ -13,6 +13,7 @@ import {
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 import { FootballLoader } from "~/components/FootballLoader";
+import { getTeamLogoSrc } from "~/lib/logo-utils";
 
 const FORMATIONS = ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2", "3-4-3", "5-3-2"];
 
@@ -216,12 +217,6 @@ function formatMatchDateTime(date: Date | string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(date));
-}
-
-function getTeamLogoSrc(team: any) {
-  if (team.logo) return team.logo;
-  if (team.shortName) return `/teams/${team.shortName}.svg`;
-  return null;
 }
 
 function buildHalfPitchSlots(formation: string, side: TeamSide): PitchSlot[] {

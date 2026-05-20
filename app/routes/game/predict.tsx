@@ -12,6 +12,7 @@ import {
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 import { FootballLoader } from "~/components/FootballLoader";
+import { getTeamLogoSrc, getTournamentLogoSrc } from "~/lib/logo-utils";
 
 function getStatusLabel(status: string) {
   switch (status) {
@@ -465,18 +466,6 @@ function formatMatchTime(date: Date | string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(date));
-}
-
-function getTeamLogoSrc(team: any) {
-  if (team.logo) return team.logo;
-  if (team.shortName) return `/teams/${team.shortName}.svg`;
-  return null;
-}
-
-function getTournamentLogoSrc(tournament?: any) {
-  if (!tournament) return null;
-  if (tournament.logo) return `/teams/${tournament.logo}.svg`;
-  return null;
 }
 
 function getTournamentSubLabel(match: any) {

@@ -12,6 +12,7 @@ import { useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 import { FootballLoader } from "~/components/FootballLoader";
+import { getTeamLogoSrc, getTournamentLogoSrc } from "~/lib/logo-utils";
 
 const LIVE_STATUSES = ["LIVE", "IN_PLAY", "PAUSED", "HALFTIME", "BREAK"];
 const UPCOMING_STATUSES = ["SCHEDULED", "TIMED"];
@@ -546,20 +547,6 @@ function formatMatchTime(date: Date | string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(date));
-}
-
-function getTeamLogoSrc(team: any) {
-  if (team.logo) return team.logo;
-  if (team.shortName) return `/teams/${team.shortName}.svg`;
-  if (team.code) return `/teams/${team.code}.svg`;
-  return null;
-}
-
-function getTournamentLogoSrc(tournament?: any) {
-  if (!tournament?.logo) return null;
-  return tournament.logo.startsWith("/")
-    ? tournament.logo
-    : `/teams/${tournament.logo}.svg`;
 }
 
 function getTournamentSubLabel(match: any) {
