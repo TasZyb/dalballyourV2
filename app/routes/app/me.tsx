@@ -223,6 +223,7 @@ export default function MePage() {
             <ActionLink to="/predict" primary>
               Зробити прогноз
             </ActionLink>
+            <ActionLink to="/courses">Курси</ActionLink>
             <ActionLink to="/me/history">Історія матчів</ActionLink>
           </div>
 

@@ -1,4 +1,5 @@
 import {
+  Link,
   data,
   redirect,
   useFetcher,
@@ -28,6 +29,7 @@ type MatchStatusValue = (typeof MATCH_STATUS)[keyof typeof MATCH_STATUS];
 
 type MessageItem = {
   id: string;
+  chatId: string;
   text: string;
   isDeleted: boolean;
   isEdited: boolean;
@@ -43,6 +45,36 @@ type MessageItem = {
   };
 };
 
+type WarRoomParticipant = {
+  userId: string;
+  name: string;
+  image: string | null;
+  isMe: boolean;
+  hasPrediction: boolean;
+  prediction: {
+    predictedHome: number;
+    predictedAway: number;
+    pointsAwarded: number;
+    weightedPointsAwarded: number;
+    wasExact: boolean;
+    wasOutcomeOnly: boolean;
+    wasWrong: boolean;
+    submittedAt: string;
+  } | null;
+};
+
+type WarRoomData = {
+  matchId: string;
+  deadline: string | null;
+  canReveal: boolean;
+  isFinished: boolean;
+  totalParticipants: number;
+  predictionCount: number;
+  missingCount: number;
+  participants: WarRoomParticipant[];
+  leaders: WarRoomParticipant[];
+};
+
 function getUserName(user: MessageItem["user"]) {
   return user.displayName || user.name || "Гравець";
 }
@@ -52,6 +84,19 @@ function formatTime(date: string | Date) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(date));
+}
+
+function formatDateTime(date: string | Date) {
+  return new Intl.DateTimeFormat("uk-UA", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(date));
+}
+
+function getPredictionDeadline(startTime: Date, lockMinutesBeforeStart: number) {
+  return new Date(startTime.getTime() - lockMinutesBeforeStart * 60 * 1000);
 }
 
 function getTeamName(team?: { shortName?: string | null; name: string } | null) {
@@ -67,13 +112,27 @@ function getInitials(name: string) {
     .join("");
 }
 
-function mergeIncomingMessage(current: MessageItem[], incoming: MessageItem) {
+function sortMessages(messages: MessageItem[]) {
+  return [...messages].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+}
+
+function mergeIncomingMessage(
+  current: MessageItem[],
+  incoming: MessageItem,
+  activeChatId: string
+) {
+  if (incoming.chatId !== activeChatId) {
+    return current;
+  }
+
   const existingIndex = current.findIndex((item) => item.id === incoming.id);
 
   if (existingIndex >= 0) {
     const next = [...current];
     next[existingIndex] = incoming;
-    return next;
+    return sortMessages(next);
   }
 
   const optimisticIndex =
@@ -81,16 +140,17 @@ function mergeIncomingMessage(current: MessageItem[], incoming: MessageItem) {
       ? -1
       : current.findIndex(
           (item) =>
+            item.chatId === activeChatId &&
             item.optimistic && item.clientMessageId === incoming.clientMessageId
         );
 
   if (optimisticIndex >= 0) {
     const next = [...current];
     next[optimisticIndex] = incoming;
-    return next;
+    return sortMessages(next);
   }
 
-  return [...current, incoming];
+  return sortMessages([...current, incoming]);
 }
 
 export async function loader({ request, params }: LoaderFunctionArgs) {
@@ -103,13 +163,24 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const game = await prisma.game.findUnique({
     where: { id: gameId },
-    include: {
+    select: {
+      id: true,
+      ownerId: true,
+      lockMinutesBeforeStart: true,
       members: {
         where: {
-          userId: currentUser.id,
           status: MEMBERSHIP_STATUS.ACTIVE,
         },
-        select: { id: true },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              displayName: true,
+              image: true,
+            },
+          },
+        },
       },
     },
   });
@@ -117,7 +188,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   if (!game) throw new Response("Game not found", { status: 404 });
 
   const isOwner = game.ownerId === currentUser.id;
-  const isMember = game.members.length > 0;
+  const isMember = game.members.some(
+    (member) => member.userId === currentUser.id
+  );
 
   if (!isOwner && !isMember) {
     throw new Response("Forbidden", { status: 403 });
@@ -136,6 +209,28 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           awayTeam: true,
           tournament: true,
           round: true,
+          gameMatches: {
+            where: { gameId },
+            select: {
+              isLocked: true,
+              predictionClosesAt: true,
+            },
+            take: 1,
+          },
+          predictions: {
+            where: { gameId },
+            select: {
+              userId: true,
+              predictedHome: true,
+              predictedAway: true,
+              pointsAwarded: true,
+              weightedPointsAwarded: true,
+              wasExact: true,
+              wasOutcomeOnly: true,
+              wasWrong: true,
+              submittedAt: true,
+            },
+          },
         },
       },
       messages: {
@@ -158,6 +253,71 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   if (!chat) throw new Response("Chat not found", { status: 404 });
 
   const isClosed = chat.match?.status === MATCH_STATUS.FINISHED;
+  const gameMatch = chat.match?.gameMatches[0] ?? null;
+  const predictionDeadline =
+    chat.match && gameMatch
+      ? gameMatch.predictionClosesAt ??
+        getPredictionDeadline(chat.match.startTime, game.lockMinutesBeforeStart)
+      : null;
+  const canReveal =
+    Boolean(chat.match) &&
+    (chat.match?.status !== MATCH_STATUS.SCHEDULED ||
+      Boolean(gameMatch?.isLocked) ||
+      (predictionDeadline ? new Date() >= predictionDeadline : false));
+  const predictionByUserId = new Map(
+    (chat.match?.predictions ?? []).map((prediction) => [
+      prediction.userId,
+      prediction,
+    ])
+  );
+  const participants: WarRoomParticipant[] = chat.match
+    ? game.members
+        .map((member) => {
+          const prediction = predictionByUserId.get(member.userId) ?? null;
+          const name = member.user.displayName || member.user.name || "Гравець";
+          const isMeParticipant = member.userId === currentUser.id;
+          const canShowPrediction = canReveal || isMeParticipant;
+
+          return {
+            userId: member.userId,
+            name,
+            image: member.user.image,
+            isMe: isMeParticipant,
+            hasPrediction: Boolean(prediction),
+            prediction:
+              prediction && canShowPrediction
+                ? {
+                    predictedHome: prediction.predictedHome,
+                    predictedAway: prediction.predictedAway,
+                    pointsAwarded: prediction.pointsAwarded,
+                    weightedPointsAwarded: prediction.weightedPointsAwarded,
+                    wasExact: prediction.wasExact,
+                    wasOutcomeOnly: prediction.wasOutcomeOnly,
+                    wasWrong: prediction.wasWrong,
+                    submittedAt: prediction.submittedAt.toISOString(),
+                  }
+                : null,
+          };
+        })
+        .sort((a, b) => {
+          if (a.isMe) return -1;
+          if (b.isMe) return 1;
+          if (a.hasPrediction && !b.hasPrediction) return -1;
+          if (!a.hasPrediction && b.hasPrediction) return 1;
+          return a.name.localeCompare(b.name, "uk");
+        })
+    : [];
+  const predictionCount = participants.filter(
+    (item) => item.hasPrediction
+  ).length;
+  const leaders = participants
+    .filter((item) => item.prediction)
+    .sort(
+      (a, b) =>
+        (b.prediction?.weightedPointsAwarded ?? 0) -
+        (a.prediction?.weightedPointsAwarded ?? 0)
+    )
+    .slice(0, 3);
 
   return data({
     currentUser: {
@@ -201,8 +361,22 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             },
           }
         : null,
+      warRoom: chat.match
+        ? ({
+            matchId: chat.match.id,
+            deadline: predictionDeadline?.toISOString() ?? null,
+            canReveal,
+            isFinished: chat.match.status === MATCH_STATUS.FINISHED,
+            totalParticipants: participants.length,
+            predictionCount,
+            missingCount: Math.max(participants.length - predictionCount, 0),
+            participants,
+            leaders,
+          } satisfies WarRoomData)
+        : null,
       messages: chat.messages.map((message) => ({
         id: message.id,
+        chatId: message.chatId,
         text: message.text,
         isDeleted: message.isDeleted,
         isEdited: message.isEdited,
@@ -321,6 +495,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const payload: MessageItem = {
     id: message.id,
+    chatId: message.chatId,
     text: message.text,
     isDeleted: message.isDeleted,
     isEdited: message.isEdited,
@@ -423,6 +598,232 @@ function MessageBubble({
   );
 }
 
+function getPredictionTone(participant: WarRoomParticipant) {
+  if (!participant.prediction) return "var(--text-soft)";
+  if (participant.prediction.wasExact) return "var(--success)";
+  if (participant.prediction.wasOutcomeOnly) return "var(--accent)";
+  if (participant.prediction.wasWrong) return "#ef4444";
+  return "var(--text)";
+}
+
+function getPredictionLabel(
+  participant: WarRoomParticipant,
+  canReveal: boolean
+) {
+  if (!participant.hasPrediction) return "ще думає";
+  if (!participant.prediction && !canReveal) return "прогноз є";
+  if (!participant.prediction) return "приховано";
+
+  return `${participant.prediction.predictedHome}:${participant.prediction.predictedAway}`;
+}
+
+function WarRoomPanel({
+  gameId,
+  warRoom,
+}: {
+  gameId: string;
+  warRoom: WarRoomData;
+}) {
+  const progress =
+    warRoom.totalParticipants > 0
+      ? Math.round((warRoom.predictionCount / warRoom.totalParticipants) * 100)
+      : 0;
+  const myPrediction = warRoom.participants.find((item) => item.isMe);
+  const revealTitle = warRoom.isFinished
+    ? "Матч завершено"
+    : warRoom.canReveal
+    ? "Прогнози відкриті"
+    : "Прогнози під замком";
+  const revealDescription = warRoom.isFinished
+    ? "Підсумки цього матчу вже можна розбирати по кісточках."
+    : warRoom.canReveal
+    ? "Дедлайн минув, тепер видно ставки друзів."
+    : warRoom.deadline
+    ? `Чужі рахунки відкриються після ${formatDateTime(warRoom.deadline)}.`
+    : "Чужі рахунки відкриються після закриття прогнозів.";
+
+  return (
+    <section
+      className="mb-4 overflow-hidden rounded-[24px] border"
+      style={{
+        borderColor: "var(--border)",
+        background:
+          "linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 42%), var(--panel)",
+      }}
+    >
+      <div
+        className="border-b px-4 py-3 sm:px-5"
+        style={{ borderColor: "var(--border)" }}
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div
+              className="text-[10px] font-black uppercase tracking-[0.18em]"
+              style={{ color: "var(--muted)" }}
+            >
+              Match War Room
+            </div>
+            <h2
+              className="mt-1 text-base font-black sm:text-lg"
+              style={{ color: "var(--text)" }}
+            >
+              {revealTitle}
+            </h2>
+            <p
+              className="mt-1 text-xs sm:text-sm"
+              style={{ color: "var(--text-soft)" }}
+            >
+              {revealDescription}
+            </p>
+          </div>
+
+          <Link
+            to={`/games/${gameId}/predict?matchId=${warRoom.matchId}`}
+            prefetch="intent"
+            className="inline-flex h-10 shrink-0 items-center justify-center rounded-full px-4 text-xs font-black uppercase tracking-[0.12em] transition hover:scale-[1.01] active:scale-[0.98]"
+            style={{
+              background: "var(--accent)",
+              color: "var(--accent-contrast)",
+            }}
+          >
+            Прогноз
+          </Link>
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-2 flex items-center justify-between gap-3 text-xs font-bold">
+            <span style={{ color: "var(--text-soft)" }}>
+              {warRoom.predictionCount}/{warRoom.totalParticipants} зробили
+              прогноз
+            </span>
+            <span className="tabular-nums" style={{ color: "var(--text)" }}>
+              {progress}%
+            </span>
+          </div>
+          <div
+            className="h-2 overflow-hidden rounded-full"
+            style={{ background: "var(--panel-strong)" }}
+          >
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${progress}%`,
+                background:
+                  "linear-gradient(90deg, var(--accent), var(--success))",
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {warRoom.isFinished && warRoom.leaders.length > 0 ? (
+        <div
+          className="border-b px-4 py-3 sm:px-5"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <div
+            className="mb-2 text-[10px] font-black uppercase tracking-[0.16em]"
+            style={{ color: "var(--muted)" }}
+          >
+            Топ цього матчу
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {warRoom.leaders.map((participant, index) => (
+              <div
+                key={participant.userId}
+                className="flex items-center gap-2 rounded-2xl px-3 py-2"
+                style={{ background: "var(--panel-strong)" }}
+              >
+                <div
+                  className="text-sm font-black tabular-nums"
+                  style={{ color: "var(--accent)" }}
+                >
+                  #{index + 1}
+                </div>
+                <Avatar
+                  name={participant.name}
+                  image={participant.image}
+                  isMe={participant.isMe}
+                />
+                <div className="min-w-0 flex-1">
+                  <div
+                    className="truncate text-xs font-black"
+                    style={{ color: "var(--text)" }}
+                  >
+                    {participant.name}
+                  </div>
+                  <div
+                    className="text-[11px] font-bold"
+                    style={{ color: "var(--text-soft)" }}
+                  >
+                    {participant.prediction?.weightedPointsAwarded ?? 0} pts
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="grid gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3">
+        {warRoom.participants.map((participant) => (
+          <div
+            key={participant.userId}
+            className="flex min-w-0 items-center gap-3 rounded-2xl px-3 py-2.5"
+            style={{
+              background: participant.isMe
+                ? "var(--accent-soft)"
+                : "var(--panel-strong)",
+            }}
+          >
+            <Avatar
+              name={participant.name}
+              image={participant.image}
+              isMe={participant.isMe}
+            />
+
+            <div className="min-w-0 flex-1">
+              <div
+                className="truncate text-sm font-black"
+                style={{ color: "var(--text)" }}
+              >
+                {participant.isMe ? "Ти" : participant.name}
+              </div>
+              <div
+                className="text-[11px] font-bold"
+                style={{ color: "var(--text-soft)" }}
+              >
+                {participant.hasPrediction ? "готовий" : "без прогнозу"}
+              </div>
+            </div>
+
+            <div
+              className="shrink-0 rounded-full px-3 py-1 text-xs font-black tabular-nums"
+              style={{
+                background: participant.hasPrediction
+                  ? "color-mix(in srgb, var(--success) 13%, transparent)"
+                  : "color-mix(in srgb, #f59e0b 13%, transparent)",
+                color: getPredictionTone(participant),
+              }}
+            >
+              {getPredictionLabel(participant, warRoom.canReveal)}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {!myPrediction?.hasPrediction && !warRoom.canReveal ? (
+        <div
+          className="border-t px-4 py-3 text-xs font-bold sm:px-5"
+          style={{ borderColor: "var(--border)", color: "var(--text-soft)" }}
+        >
+          Твій прогноз ще можна додати, поки кімната не відкрила всі ставки.
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export default function ChatDetailsPage() {
   const { currentUser, chat } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
@@ -432,6 +833,7 @@ export default function ChatDetailsPage() {
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const clientMessageIdRef = useRef<HTMLInputElement | null>(null);
+  const loadedChatIdRef = useRef(chat.id);
   const lastClientMessageIdRef = useRef<string | null>(null);
   const lastSubmittedTextRef = useRef<string | null>(null);
   const processedActionMessageIdsRef = useRef<Set<string>>(new Set());
@@ -441,20 +843,38 @@ export default function ChatDetailsPage() {
 
   useEffect(() => {
     setMessages((current) => {
-      const withoutOptimistic = current.filter((item) => !item.optimistic);
-      const incomingIds = new Set(chat.messages.map((item) => item.id));
+      const sortedChatMessages = sortMessages(chat.messages);
 
-      const merged = [
-        ...withoutOptimistic.filter((item) => !incomingIds.has(item.id)),
-        ...chat.messages,
-      ];
+      if (loadedChatIdRef.current !== chat.id) {
+        loadedChatIdRef.current = chat.id;
+        return sortedChatMessages;
+      }
 
-      return merged.sort(
-        (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      const incomingIds = new Set(sortedChatMessages.map((item) => item.id));
+      const currentChatMessages = current.filter(
+        (item) => item.chatId === chat.id
       );
+      const socketOnlyMessages = currentChatMessages.filter(
+        (item) => !item.optimistic && !incomingIds.has(item.id)
+      );
+      const optimisticMessages = currentChatMessages.filter(
+        (item) => item.optimistic && !incomingIds.has(item.id)
+      );
+
+      return sortMessages([
+        ...socketOnlyMessages,
+        ...sortedChatMessages,
+        ...optimisticMessages,
+      ]);
     });
   }, [chat.id, chat.messages]);
+
+  useEffect(() => {
+    setText("");
+    lastClientMessageIdRef.current = null;
+    lastSubmittedTextRef.current = null;
+    processedActionMessageIdsRef.current.clear();
+  }, [chat.id]);
 
   useEffect(() => {
     if (chat.isClosed) return;
@@ -472,7 +892,7 @@ export default function ChatDetailsPage() {
     });
 
     socket.on("chat:new-message", (message: MessageItem) => {
-      setMessages((current) => mergeIncomingMessage(current, message));
+      setMessages((current) => mergeIncomingMessage(current, message, chat.id));
     });
 
     return () => {
@@ -493,10 +913,10 @@ export default function ChatDetailsPage() {
   }, [messages.length, chat.id]);
 
   useEffect(() => {
-    if (fetcher.data?.ok) {
+    if (fetcher.data && "message" in fetcher.data) {
       const message = fetcher.data.message;
 
-      setMessages((current) => mergeIncomingMessage(current, message));
+      setMessages((current) => mergeIncomingMessage(current, message, chat.id));
       lastClientMessageIdRef.current = null;
       lastSubmittedTextRef.current = null;
 
@@ -507,7 +927,7 @@ export default function ChatDetailsPage() {
           message,
         });
       }
-    } else if (fetcher.data && !fetcher.data.ok) {
+    } else if (fetcher.data && "error" in fetcher.data) {
       const failedClientMessageId = lastClientMessageIdRef.current;
 
       if (failedClientMessageId) {
@@ -549,6 +969,7 @@ export default function ChatDetailsPage() {
       id: `optimistic-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2)}`,
+      chatId: chat.id,
       text: value,
       isDeleted: false,
       isEdited: false,
@@ -642,8 +1063,12 @@ export default function ChatDetailsPage() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-5">
+        {chat.warRoom ? (
+          <WarRoomPanel gameId={chat.gameId} warRoom={chat.warRoom} />
+        ) : null}
+
         {messages.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-center">
+          <div className="flex min-h-[260px] items-center justify-center text-center">
             <div className="max-w-sm">
               <div
                 className="mx-auto flex h-14 w-14 items-center justify-center rounded-3xl text-2xl"
@@ -740,7 +1165,7 @@ export default function ChatDetailsPage() {
           </fetcher.Form>
         )}
 
-        {fetcher.data && !fetcher.data.ok ? (
+        {fetcher.data && "error" in fetcher.data ? (
           <div className="mt-2 text-xs font-bold" style={{ color: "#ef4444" }}>
             {fetcher.data.error}
           </div>

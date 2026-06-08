@@ -13,6 +13,7 @@ export default [
   ]),
 
   route("join", "routes/join.tsx"),
+  route("courses", "routes/courses.tsx"),
 
   route("me", "routes/app/me.tsx"),
   route("me/edit", "routes/app/me-edit.tsx"),
@@ -24,9 +25,12 @@ export default [
    */
   route("games/:gameId", "routes/game-layout.tsx", [
     index("routes/game/home.tsx"),
+    route("tasks", "routes/game/tasks.tsx"),
+    route("tasks/daily", "routes/game/daily-quiz.tsx"),
     route("predict", "routes/game/predict.tsx"),
     route("predict-advanced/:matchId", "routes/game/predict-advanced.tsx"),
     route("leaderboard", "routes/game/leaderboard.tsx"),
+    route("profile", "routes/game/profile.tsx"),
     route("matches", "routes/game/matches.tsx"),
     route("matches/:matchId", "routes/game/match-details.tsx"),
     route("teams/:teamId", "routes/game/team-details.tsx"),

@@ -84,6 +84,11 @@ type ChatWithData = {
   _count: {
     messages: number;
   };
+  warRoomSummary?: {
+    predictionCount: number;
+    totalParticipants: number;
+    canReveal: boolean;
+  } | null;
 };
 
 function getTeamName(team?: { shortName?: string | null; name: string } | null) {
@@ -168,6 +173,10 @@ function formatMatchDate(date: Date | string) {
   }).format(new Date(date));
 }
 
+function getPredictionDeadline(startTime: Date, lockMinutesBeforeStart: number) {
+  return new Date(startTime.getTime() - lockMinutesBeforeStart * 60 * 1000);
+}
+
 export async function loader({ request, params }: LoaderFunctionArgs) {
   const currentUser = await getCurrentUser(request);
   const gameId = params.gameId;
@@ -181,6 +190,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       id: true,
       name: true,
       ownerId: true,
+      lockMinutesBeforeStart: true,
       members: {
         where: {
           userId: currentUser.id,
@@ -284,7 +294,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         select: { id: true },
       });
     } catch {
-      generalChat = await prisma.chat.findFirst({
+      const fallbackGeneralChat = await prisma.chat.findFirst({
         where: {
           gameId,
           type: CHAT_TYPE.GENERAL,
@@ -297,6 +307,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           { createdAt: "asc" },
         ],
       });
+
+      if (fallbackGeneralChat) {
+        generalChat = fallbackGeneralChat;
+      }
     }
   }
 
@@ -305,6 +319,31 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }
 
   const matchIds = game.gameMatches.map((gameMatch) => gameMatch.matchId);
+  const [activeMembersCount, predictionCounts] = await Promise.all([
+    prisma.gameMember.count({
+      where: {
+        gameId,
+        status: MEMBERSHIP_STATUS.ACTIVE,
+      },
+    }),
+    matchIds.length > 0
+      ? prisma.prediction.groupBy({
+          by: ["matchId"],
+          where: {
+            gameId,
+            matchId: {
+              in: matchIds,
+            },
+          },
+          _count: {
+            _all: true,
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+  const predictionCountByMatchId = new Map(
+    predictionCounts.map((item) => [item.matchId, item._count._all])
+  );
 
   const existingMatchChats = await prisma.chat.findMany({
     where: {
@@ -384,6 +423,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
               name: true,
             },
           },
+          gameMatches: {
+            where: { gameId },
+            select: {
+              isLocked: true,
+              predictionClosesAt: true,
+            },
+            take: 1,
+          },
         },
       },
       messages: {
@@ -433,7 +480,39 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       id: currentUser.id,
     },
     generalChatId: generalChat.id,
-    chats,
+    chats: chats.map((chat) => {
+      const gameMatch = chat.match?.gameMatches[0] ?? null;
+      const deadline =
+        chat.match && gameMatch
+          ? gameMatch.predictionClosesAt ??
+            getPredictionDeadline(
+              chat.match.startTime,
+              game.lockMinutesBeforeStart
+            )
+          : null;
+      const canReveal =
+        Boolean(chat.match) &&
+        (chat.match?.status !== MATCH_STATUS.SCHEDULED ||
+          Boolean(gameMatch?.isLocked) ||
+          (deadline ? new Date() >= deadline : false));
+
+      return {
+        ...chat,
+        match: chat.match
+          ? {
+              ...chat.match,
+              gameMatches: undefined,
+            }
+          : null,
+        warRoomSummary: chat.match
+          ? {
+              predictionCount: predictionCountByMatchId.get(chat.match.id) ?? 0,
+              totalParticipants: activeMembersCount,
+              canReveal,
+            }
+          : null,
+      };
+    }),
   });
 }
 
@@ -490,6 +569,11 @@ function ChatNavItem({
   onClick?: () => void;
 }) {
   const lastMessage = chat.messages?.[0] ?? null;
+  const warRoom = chat.warRoomSummary;
+  const warRoomProgress =
+    warRoom && warRoom.totalParticipants > 0
+      ? Math.round((warRoom.predictionCount / warRoom.totalParticipants) * 100)
+      : 0;
 
   return (
     <Link
@@ -579,6 +663,31 @@ function ChatNavItem({
               <span className="shrink-0 font-black tabular-nums">
                 {chat.match.homeScore ?? "—"}:{chat.match.awayScore ?? "—"}
               </span>
+            </div>
+          ) : null}
+
+          {warRoom ? (
+            <div className="mt-2">
+              <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.08em]">
+                <span style={{ color: "var(--accent)" }}>War Room</span>
+                <span className="tabular-nums" style={{ color: "var(--muted)" }}>
+                  {warRoom.predictionCount}/{warRoom.totalParticipants}
+                </span>
+              </div>
+              <div
+                className="h-1.5 overflow-hidden rounded-full"
+                style={{ background: "var(--panel)" }}
+              >
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${warRoomProgress}%`,
+                    background: warRoom.canReveal
+                      ? "linear-gradient(90deg, var(--success), var(--accent))"
+                      : "linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 58%, var(--success)))",
+                  }}
+                />
+              </div>
             </div>
           ) : null}
 

@@ -9,6 +9,9 @@ import { MatchStatus, MembershipStatus } from "@prisma/client";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 import { FootballLoader } from "~/components/FootballLoader";
+import { PlayerFifaCard, RatingDelta } from "~/components/PlayerFifaCard";
+import { syncGamePlayerCards } from "~/lib/player-card-rating.server";
+import { isGuestPreviewGame } from "~/lib/guest-preview.server";
 
 type LeaderboardView = "overview" | "exact" | "form";
 
@@ -23,6 +26,7 @@ type Row = {
   id: string;
   name: string;
   image?: string | null;
+  favoriteTeamId?: string | null;
 
   rank: number;
   movement: number;
@@ -48,6 +52,22 @@ type Row = {
   last5Results: LastResult[];
 
   gapToLeader: number;
+
+  card: {
+    rating: number;
+    previousRating: number;
+    ratingDelta: number;
+    photoUrl: string | null;
+    clubTeamId: string | null;
+    clubTeam: {
+      id: string;
+      name: string;
+      shortName: string | null;
+      logo: string | null;
+      code: string | null;
+    } | null;
+    computedAt: string;
+  };
 };
 
 function getDisplayName(user: {
@@ -132,10 +152,36 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Game not found", { status: 404 });
   }
 
+  const gameShell = await prisma.game.findUnique({
+    where: { id: gameId },
+    select: { slug: true },
+  });
+
+  if (!gameShell) {
+    throw new Response("Game not found", { status: 404 });
+  }
+
+  if (currentUser || !isGuestPreviewGame(gameShell)) {
+    await syncGamePlayerCards(gameId);
+  }
+
   const game = await prisma.game.findUnique({
     where: { id: gameId },
     include: {
       linkedTournament: true,
+      playerCards: {
+        include: {
+          clubTeam: {
+            select: {
+              id: true,
+              name: true,
+              shortName: true,
+              logo: true,
+              code: true,
+            },
+          },
+        },
+      },
       members: {
         where: {
           status: MembershipStatus.ACTIVE,
@@ -182,6 +228,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }
 
   const leaderboardMatchIds = new Set(game.gameMatches.map((gm) => gm.matchId));
+  const playerCardByUserId = new Map(
+    game.playerCards.map((card) => [card.userId, card])
+  );
 
   const finishedPredictionsForGame = game.predictions.filter(
     (prediction) =>
@@ -266,6 +315,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       id: member.user.id,
       name: getDisplayName(member.user),
       image: member.user.image ?? null,
+      favoriteTeamId: member.user.favoriteTeamId,
 
       rank: 0,
       movement: 0,
@@ -291,6 +341,19 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       last5Results,
 
       gapToLeader: 0,
+      card: (() => {
+        const card = playerCardByUserId.get(member.userId);
+
+        return {
+          rating: card?.rating ?? 40,
+          previousRating: card?.previousRating ?? 40,
+          ratingDelta: card?.ratingDelta ?? 0,
+          photoUrl: card?.photoUrl ?? member.user.image ?? null,
+          clubTeamId: card?.clubTeamId ?? member.user.favoriteTeamId ?? null,
+          clubTeam: card?.clubTeam ?? null,
+          computedAt: card?.computedAt.toISOString() ?? new Date().toISOString(),
+        };
+      })(),
     };
   });
 
@@ -711,8 +774,10 @@ function MobileRow({
               border: "1px solid var(--border)",
             }}
           >
-            {formatPercent(player.accuracyRate)}
+            OVR {player.card.rating}
           </span>
+
+          <RatingDelta value={player.card.ratingDelta} />
 
           <span
             className="rounded-full px-2 py-1 font-black"
@@ -829,6 +894,43 @@ export default function LeaderboardPage() {
           isBusy ? "pointer-events-none select-none opacity-80" : "opacity-100"
         }`}
       >
+        {leaderboard.length > 0 ? (
+          <section
+            className="rounded-[24px] p-3 sm:p-4"
+            style={{
+              background: "var(--panel-strong)",
+              border: "1px solid var(--border)",
+            }}
+          >
+            <div className="mb-3 flex items-end justify-between gap-3 px-1">
+              <div>
+                <div
+                  className="text-[10px] font-black uppercase tracking-[0.18em]"
+                  style={{ color: "var(--muted)" }}
+                >
+                  Card Collection
+                </div>
+                <h2
+                  className="mt-1 text-xl font-black"
+                  style={{ color: "var(--text)" }}
+                >
+                  Усі картки гри
+                </h2>
+              </div>
+            </div>
+
+            <div className="-mx-3 overflow-x-auto px-3 pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="flex min-w-max snap-x snap-mandatory gap-2">
+                {leaderboard.map((player) => (
+                  <div key={player.id} className="snap-start">
+                    <PlayerFifaCard player={player} compact />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
         <section
           className="rounded-[28px] p-3 sm:p-4"
           style={{
@@ -909,6 +1011,9 @@ export default function LeaderboardPage() {
                           <th className="px-4 py-3 text-left font-black">#</th>
                           <th className="px-4 py-3 text-left font-black">
                             Гравець
+                          </th>
+                          <th className="px-4 py-3 text-right font-black">
+                            OVR
                           </th>
                           <th className="px-4 py-3 text-right font-black">
                             Очки
@@ -996,6 +1101,20 @@ export default function LeaderboardPage() {
                                       {player.wrongHits} промахів
                                     </div>
                                   </div>
+                                </div>
+                              </td>
+
+                              <td className="px-4 py-3 text-right">
+                                <div
+                                  className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-black tabular-nums"
+                                  style={{
+                                    background: "var(--panel)",
+                                    color: "var(--accent)",
+                                    border: "1px solid var(--border)",
+                                  }}
+                                >
+                                  {player.card.rating}
+                                  <RatingDelta value={player.card.ratingDelta} />
                                 </div>
                               </td>
 

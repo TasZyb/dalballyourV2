@@ -11,6 +11,7 @@ import {
 import { useMemo, useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
+import { getGuestPreviewGame } from "~/lib/guest-preview.server";
 
 type NextMatch = {
   id: string;
@@ -90,8 +91,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const currentUser = await getCurrentUser(request);
 
   if (!currentUser) {
+    const guestPreviewGame = await getGuestPreviewGame();
+
     return data({
       currentUser: null,
+      guestPreviewGame,
       leagueGames: [] as LobbyGame[],
       careerGames: [] as LobbyGame[],
       stats: {
@@ -234,6 +238,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       email: currentUser.email,
       displayName: currentUser.displayName,
     },
+    guestPreviewGame: null,
     leagueGames,
     careerGames,
     stats: {
@@ -338,7 +343,7 @@ ${message}
 }
 
 export default function LobbyPage() {
-  const { currentUser, leagueGames, careerGames, stats } =
+  const { currentUser, guestPreviewGame, leagueGames, careerGames, stats } =
     useLoaderData<typeof loader>();
 
   const [activeTab, setActiveTab] = useState<LobbyTab>("leagues");
@@ -354,7 +359,7 @@ export default function LobbyPage() {
   );
 
   if (!currentUser) {
-    return <GuestLobby />;
+    return <GuestLobby guestPreviewGame={guestPreviewGame} />;
   }
 
   return (
@@ -402,47 +407,187 @@ export default function LobbyPage() {
   );
 }
 
-function GuestLobby() {
+function GuestLobby({
+  guestPreviewGame,
+}: {
+  guestPreviewGame: Awaited<ReturnType<typeof getGuestPreviewGame>>;
+}) {
+  const guestHref = guestPreviewGame ? `/games/${guestPreviewGame.id}` : "/login";
+  const features = [
+    {
+      title: "Ліга для друзів",
+      text: "Створюєш гру, кидаєш код запрошення і всі прогнозують ті самі матчі.",
+      icon: <IconShield />,
+    },
+    {
+      title: "Прогнози до старту",
+      text: "Ставиш рахунок до початку матчу. Після свистка прогноз закривається.",
+      icon: <IconClock />,
+    },
+    {
+      title: "Жива таблиця",
+      text: "Бали, точні рахунки, форма і позиції оновлюються після результатів.",
+      icon: <IconTrophy />,
+    },
+    {
+      title: "Детальний предікт",
+      text: "Окремий простір для MVP, авторів голів, схем і футбольних деталей.",
+      icon: <IconBall />,
+    },
+  ];
+
   return (
-    <main className="theme-page relative min-h-screen overflow-hidden px-4 py-6">
+    <main className="theme-page relative min-h-screen overflow-hidden px-4 py-4 sm:px-6 sm:py-6">
       <LobbyBackground />
 
-      <div className="relative mx-auto flex min-h-[70vh] max-w-4xl items-center">
-        <div className="theme-panel-strong relative w-full overflow-hidden rounded-[2rem] p-6 sm:p-8">
-          <PitchSvg className="absolute right-[-160px] top-[-90px] h-64 w-[420px] opacity-10" />
+      <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-4">
+        <header className="flex items-center justify-between gap-3 py-1">
+          <Link to="/" className="flex items-center gap-3">
+            <div className="theme-accent-bg flex h-11 w-11 items-center justify-center rounded-2xl">
+              <IconBall className="h-6 w-6" />
+            </div>
+            <div>
+              <div className="theme-muted text-[10px] font-black uppercase tracking-[0.2em]">
+                Predict League
+              </div>
+              <div className="text-lg font-black">Match Predictor</div>
+            </div>
+          </Link>
 
-          <div className="relative z-10 max-w-2xl">
-            <div className="theme-accent-bg inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">
-              Match Predictor
+          <Link
+            to="/login"
+            className="theme-button rounded-2xl px-4 py-2 text-sm font-black"
+          >
+            Увійти
+          </Link>
+        </header>
+
+        <section className="grid gap-4 lg:grid-cols-[1.08fr_0.92fr]">
+          <div className="theme-panel-strong relative min-h-[560px] overflow-hidden rounded-[2rem] p-5 sm:p-8">
+            <PitchSvg className="absolute right-[-170px] top-[-95px] h-72 w-[460px] opacity-10" />
+
+            <div className="relative z-10 flex min-h-[500px] flex-col justify-between">
+              <div>
+                <div className="theme-accent-bg inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.18em]">
+                  Футбольна гра прогнозів
+                </div>
+
+                <h1 className="mt-5 max-w-3xl text-4xl font-black leading-[0.98] tracking-tight sm:text-6xl">
+                  Прогнозуй матчі. Збирай бали. Обганяй друзів.
+                </h1>
+
+                <p className="theme-text-soft mt-5 max-w-2xl text-base leading-7 sm:text-lg">
+                  Match Predictor перетворює реальні матчі на коротку битву
+                  прогнозів: кожен ставить рахунок, система рахує очки, а
+                  таблиця швидко показує, хто справді відчуває футбол.
+                </p>
+
+                <div className="mt-7 grid gap-2 sm:grid-cols-3">
+                  <HeroMetric value="3" label="бали за точний рахунок" />
+                  <HeroMetric value="1" label="бал за правильний результат" />
+                  <HeroMetric value="0" label="балів за промах" />
+                </div>
+              </div>
+
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link
+                  to={guestHref}
+                  className="theme-primary-button inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 text-sm font-black"
+                >
+                  Спробувати без входу
+                  <IconArrow className="h-4 w-4" />
+                </Link>
+
+                <Link
+                  to="/login"
+                  className="theme-button inline-flex rounded-2xl px-5 py-3 text-sm font-black"
+                >
+                  Увійти через Google
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-4">
+            <div className="football-pitch-card relative min-h-72 overflow-hidden rounded-[2rem] p-5 text-white">
+              <div className="football-field-lines" />
+              <div className="relative z-10">
+                <div className="inline-flex rounded-full bg-white/14 px-3 py-1 text-xs font-black uppercase tracking-[0.16em]">
+                  Як це грається
+                </div>
+
+                <div className="mt-7 grid gap-3">
+                  <GuestStep number="1" text="Адмін створює лігу та додає матчі." />
+                  <GuestStep number="2" text="Гравці заходять по коду і ставлять рахунок." />
+                  <GuestStep number="3" text="Після матчу таблиця рахує бали й точні попадання." />
+                </div>
+              </div>
             </div>
 
-            <h1 className="mt-5 text-4xl font-black tracking-tight sm:text-6xl">
-              Прогнозуй матчі. Обганяй друзів.
-            </h1>
+            <div className="theme-panel rounded-[2rem] p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="theme-muted text-[10px] font-black uppercase tracking-[0.18em]">
+                    Демо-гра
+                  </div>
+                  <h2 className="text-xl font-black">Зайди як guest</h2>
+                </div>
+                <IconLive className="theme-accent h-8 w-8" />
+              </div>
 
-            <p className="theme-text-soft mt-4 max-w-xl text-sm leading-6 sm:text-base">
-              Дружні ліги, сольна кар’єра, live-матчі, таблиці та точні рахунки.
-            </p>
+              <p className="theme-text-soft text-sm leading-6">
+                Усередині вже є вигадані люди, матчі, лідерборд і форма
+                прогнозу. Можна натискати, міняти рахунок і відчути весь flow
+                без реєстрації.
+              </p>
 
-            <div className="mt-6 flex flex-wrap gap-3">
               <Link
-                to="/login"
-                className="theme-primary-button rounded-2xl px-5 py-3 text-sm font-black"
+                to={guestHref}
+                className="theme-primary-button mt-4 inline-flex w-full items-center justify-center rounded-2xl px-5 py-3 text-sm font-black"
               >
-                Увійти
-              </Link>
-
-              <Link
-                to="/create/league"
-                className="theme-button rounded-2xl px-5 py-3 text-sm font-bold"
-              >
-                Створити лігу
+                Відкрити пробну гру
               </Link>
             </div>
           </div>
-        </div>
+        </section>
+
+        <section className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          {features.map((feature) => (
+            <div key={feature.title} className="theme-panel rounded-[1.5rem] p-4">
+              <div className="theme-accent-bg mb-4 flex h-11 w-11 items-center justify-center rounded-2xl">
+                <span className="h-6 w-6">{feature.icon}</span>
+              </div>
+              <h3 className="text-lg font-black">{feature.title}</h3>
+              <p className="theme-text-soft mt-2 text-sm leading-6">
+                {feature.text}
+              </p>
+            </div>
+          ))}
+        </section>
       </div>
     </main>
+  );
+}
+
+function HeroMetric({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="theme-card-highlight rounded-[1.25rem] p-3">
+      <div className="theme-accent text-3xl font-black">{value}</div>
+      <div className="theme-text-soft mt-1 text-xs font-bold uppercase leading-4 tracking-[0.08em]">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function GuestStep({ number, text }: { number: string; text: string }) {
+  return (
+    <div className="grid grid-cols-[auto_1fr] items-center gap-3 rounded-2xl bg-black/18 p-3 backdrop-blur-sm">
+      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-sm font-black text-emerald-900">
+        {number}
+      </div>
+      <div className="text-sm font-black leading-5">{text}</div>
+    </div>
   );
 }
 

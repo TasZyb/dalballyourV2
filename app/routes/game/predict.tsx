@@ -9,10 +9,15 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "react-router";
+import { useEffect, useMemo, useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 import { FootballLoader } from "~/components/FootballLoader";
 import { getTeamLogoSrc, getTournamentLogoSrc } from "~/lib/logo-utils";
+import {
+  guestPreviewUser,
+  isGuestPreviewGame,
+} from "~/lib/guest-preview.server";
 
 function getStatusLabel(status: string) {
   switch (status) {
@@ -81,24 +86,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const currentUser = await getCurrentUser(request);
   const gameId = params.gameId;
 
-  if (!currentUser) {
-    throw redirect("/login");
-  }
-
   if (!gameId) {
     throw new Response("Game not found", { status: 404 });
-  }
-
-  const membership = await prisma.gameMember.findFirst({
-    where: {
-      gameId,
-      userId: currentUser.id,
-      status: "ACTIVE",
-    },
-  });
-
-  if (!membership) {
-    throw redirect("/");
   }
 
   const game = await prisma.game.findUnique({
@@ -106,6 +95,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     select: {
       id: true,
       name: true,
+      slug: true,
       lockMinutesBeforeStart: true,
       allowMemberPredictionsEdit: true,
       timezone: true,
@@ -114,6 +104,27 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   if (!game) {
     throw new Response("Game not found", { status: 404 });
+  }
+
+  const isGuestPreview = isGuestPreviewGame(game);
+  const activeUser = currentUser ?? guestPreviewUser;
+
+  if (!currentUser && !isGuestPreview) {
+    throw redirect("/login");
+  }
+
+  if (currentUser && !isGuestPreview) {
+    const membership = await prisma.gameMember.findFirst({
+      where: {
+        gameId,
+        userId: currentUser.id,
+        status: "ACTIVE",
+      },
+    });
+
+    if (!membership) {
+      throw redirect("/");
+    }
   }
 
   const url = new URL(request.url);
@@ -131,7 +142,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           predictions: {
             where: {
               gameId,
-              userId: currentUser.id,
+              userId: activeUser.id,
             },
             take: 1,
           },
@@ -250,7 +261,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           ...selectedGameMatch.match,
           myPrediction:
             selectedGameMatch.match.predictions.find(
-              (p) => p.userId === currentUser.id
+              (p) => p.userId === activeUser.id
             ) ?? null,
         },
       };
@@ -275,11 +286,24 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           return {
             userId: member.user.id,
             name: getDisplayName(member.user),
-            isMe: member.user.id === currentUser.id,
+            isMe: member.user.id === activeUser.id,
             role: member.role,
             prediction,
           };
         })
+        .concat(
+          isGuestPreview
+            ? [
+                {
+                  userId: activeUser.id,
+                  name: getDisplayName(activeUser),
+                  isMe: true,
+                  role: "GUEST",
+                  prediction: null,
+                },
+              ]
+            : []
+        )
         .sort((a, b) => {
           if (a.isMe) return -1;
           if (b.isMe) return 1;
@@ -291,7 +315,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   }
 
   return data({
-    currentUser,
+    currentUser: activeUser,
+    isGuestPreview,
     game,
     compactMatches,
     pickerMatches,
@@ -303,10 +328,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 export async function action({ request, params }: ActionFunctionArgs) {
   const currentUser = await getCurrentUser(request);
   const gameId = params.gameId;
-
-  if (!currentUser) {
-    throw redirect("/login");
-  }
 
   if (!gameId) {
     throw new Response("Game not found", { status: 404 });
@@ -331,21 +352,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return data({ error: "Введи коректний рахунок." }, { status: 400 });
   }
 
-  const membership = await prisma.gameMember.findFirst({
-    where: {
-      gameId,
-      userId: currentUser.id,
-      status: "ACTIVE",
-    },
-  });
-
-  if (!membership) {
-    return data({ error: "Ти не є учасником цієї гри." }, { status: 403 });
-  }
-
   const game = await prisma.game.findUnique({
     where: { id: gameId },
     select: {
+      slug: true,
       lockMinutesBeforeStart: true,
       allowMemberPredictionsEdit: true,
       defaultRoundWeight: true,
@@ -354,6 +364,26 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   if (!game) {
     return data({ error: "Гру не знайдено." }, { status: 404 });
+  }
+
+  const isGuestPreview = isGuestPreviewGame(game);
+
+  if (!currentUser && !isGuestPreview) {
+    throw redirect("/login");
+  }
+
+  if (currentUser && !isGuestPreview) {
+    const membership = await prisma.gameMember.findFirst({
+      where: {
+        gameId,
+        userId: currentUser.id,
+        status: "ACTIVE",
+      },
+    });
+
+    if (!membership) {
+      return data({ error: "Ти не є учасником цієї гри." }, { status: 403 });
+    }
   }
 
   const gameMatch = await prisma.gameMatch.findFirst({
@@ -389,10 +419,24 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
+  if (!currentUser && isGuestPreview) {
+    return data({
+      ok: true,
+      isGuestPreview: true,
+      message:
+        "Guest-прогноз прийнято для проби. У базу він не записується.",
+      prediction: {
+        matchId,
+        predictedHome,
+        predictedAway,
+      },
+    });
+  }
+
   const existingPrediction = await prisma.prediction.findUnique({
     where: {
       userId_gameId_matchId: {
-        userId: currentUser.id,
+        userId: currentUser!.id,
         gameId,
         matchId,
       },
@@ -415,13 +459,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   await prisma.prediction.upsert({
     where: {
       userId_gameId_matchId: {
-        userId: currentUser.id,
+        userId: currentUser!.id,
         gameId,
         matchId,
       },
     },
     create: {
-      userId: currentUser.id,
+      userId: currentUser!.id,
       gameId,
       matchId,
       predictedHome,
@@ -466,6 +510,30 @@ function formatMatchTime(date: Date | string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(date));
+}
+
+function formatDeadlineShort(date: Date | string) {
+  return new Intl.DateTimeFormat("uk-UA", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(date));
+}
+
+function getTimeUntilLabel(date: Date | string) {
+  const diffMs = new Date(date).getTime() - Date.now();
+
+  if (diffMs <= 0) return "вже закрито";
+
+  const minutes = Math.ceil(diffMs / 60000);
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+
+  if (days > 0) return `${days}д ${hours}г`;
+  if (hours > 0) return `${hours}г ${mins}хв`;
+  return `${mins}хв`;
 }
 
 function getTournamentSubLabel(match: any) {
@@ -690,32 +758,94 @@ function MatchPickerCard({
   );
 }
 
-function QuickScoreInput({
-  name,
+function clampScore(value: string | number) {
+  const numeric = Number(value);
+
+  if (Number.isNaN(numeric)) return "";
+
+  return String(Math.max(0, Math.min(20, Math.floor(numeric))));
+}
+
+function DecisionStat({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string | number;
+  tone?: "neutral" | "green" | "amber";
+}) {
+  const toneClass =
+    tone === "green"
+      ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
+      : tone === "amber"
+      ? "border-amber-400/20 bg-amber-500/10 text-amber-100"
+      : "border-white/10 bg-white/[0.055] text-white";
+
+  return (
+    <div className={`rounded-2xl border px-3 py-3 ${toneClass}`}>
+      <div className="text-xl font-black leading-none tracking-tight">
+        {value}
+      </div>
+      <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] opacity-55">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function ScoreStepper({
   teamName,
-  defaultValue,
+  value,
+  onChange,
   disabled = false,
 }: {
-  name: string;
   teamName: string;
-  defaultValue?: number | string;
+  value: string;
+  onChange: (value: string) => void;
   disabled?: boolean;
 }) {
+  const numericValue = Number(value || 0);
+
   return (
-    <div className="space-y-2">
-      <div className="text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-white/45">
+    <div className="score-stepper">
+      <div className="min-h-[30px] text-center text-[11px] font-black uppercase tracking-[0.12em] text-white/60">
         {teamName}
       </div>
 
-      <input
-        type="number"
-        min={0}
-        name={name}
-        defaultValue={defaultValue}
-        disabled={disabled}
-        placeholder="0"
-        className="h-16 w-full rounded-[24px] border border-white/10 bg-white/[0.05] px-4 text-center text-3xl font-black tracking-tight text-white outline-none transition placeholder:text-white/20 focus:border-white/20 focus:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-60 sm:h-20 sm:text-4xl"
-      />
+      <div className="mt-3 grid grid-cols-[42px_1fr_42px] items-center gap-2 sm:grid-cols-[48px_1fr_48px]">
+        <button
+          type="button"
+          disabled={disabled || numericValue <= 0}
+          onClick={() => onChange(clampScore(numericValue - 1))}
+          className="h-11 rounded-2xl border border-white/10 bg-white/[0.06] text-xl font-black text-white transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-35"
+          aria-label={`Зменшити рахунок ${teamName}`}
+        >
+          -
+        </button>
+
+        <input
+          type="number"
+          min={0}
+          max={20}
+          value={value}
+          disabled={disabled}
+          onChange={(event) => onChange(clampScore(event.target.value))}
+          placeholder="0"
+          className="h-20 w-full rounded-[24px] border border-white/10 bg-black/20 px-3 text-center text-4xl font-black tracking-tight text-white outline-none transition placeholder:text-white/20 focus:border-emerald-300/40 focus:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-60 sm:h-24 sm:text-5xl"
+          inputMode="numeric"
+        />
+
+        <button
+          type="button"
+          disabled={disabled || numericValue >= 20}
+          onClick={() => onChange(clampScore(numericValue + 1))}
+          className="h-11 rounded-2xl border border-white/10 bg-white/[0.06] text-xl font-black text-white transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-35"
+          aria-label={`Збільшити рахунок ${teamName}`}
+        >
+          +
+        </button>
+      </div>
     </div>
   );
 }
@@ -765,8 +895,13 @@ function PredictionPersonRow({ item }: { item: any }) {
 export default function PredictPage() {
   const navigation = useNavigation();
 
-  const { game, pickerMatches, selectedMatchBlock, participantPredictions } =
-    useLoaderData<typeof loader>();
+  const {
+    game,
+    pickerMatches,
+    selectedMatchBlock,
+    participantPredictions,
+    isGuestPreview,
+  } = useLoaderData<typeof loader>();
 
   const actionData = useActionData<typeof action>();
 
@@ -780,6 +915,61 @@ export default function PredictPage() {
   const tournamentSubLabel = selectedMatch
     ? getTournamentSubLabel(selectedMatch)
     : null;
+  const decisionStats = useMemo(() => {
+    const openMatches = pickerMatches.filter((item) => !item.isLocked);
+    const predictedMatches = pickerMatches.filter(
+      (item) => item.match.myPrediction
+    );
+    const lockedMatches = pickerMatches.filter((item) => item.isLocked);
+    const nextDeadline = openMatches
+      .map((item) => item.predictionDeadline)
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0];
+
+    return {
+      open: openMatches.length,
+      predicted: predictedMatches.length,
+      locked: lockedMatches.length,
+      nextDeadline,
+    };
+  }, [pickerMatches]);
+  const [score, setScore] = useState({ home: "", away: "" });
+  const [showAllPredictions, setShowAllPredictions] = useState(false);
+  const quickPresets = [
+    [1, 0],
+    [2, 1],
+    [1, 1],
+    [0, 0],
+    [3, 1],
+    [0, 1],
+  ];
+
+  useEffect(() => {
+    setScore({
+      home:
+        myPrediction?.predictedHome === undefined ||
+        myPrediction?.predictedHome === null
+          ? ""
+          : String(myPrediction.predictedHome),
+      away:
+        myPrediction?.predictedAway === undefined ||
+        myPrediction?.predictedAway === null
+          ? ""
+          : String(myPrediction.predictedAway),
+    });
+  }, [
+    selectedMatch?.id,
+    myPrediction?.predictedHome,
+    myPrediction?.predictedAway,
+  ]);
+
+  useEffect(() => {
+    setShowAllPredictions(false);
+  }, [selectedMatch?.id]);
+
+  const visibleParticipantPredictions = showAllPredictions
+    ? participantPredictions
+    : participantPredictions.slice(0, 3);
+  const hiddenParticipantCount = Math.max(participantPredictions.length - 3, 0);
 
   return (
     <>
@@ -790,39 +980,66 @@ export default function PredictPage() {
           isBusy ? "pointer-events-none select-none opacity-80" : "opacity-100"
         }`}
       >
-        <section className="space-y-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
-                <TinyIconBall />
-                Predict
+        <section className="prediction-studio overflow-hidden rounded-[32px] px-4 py-5 sm:px-6 sm:py-6">
+          <div className="tactical-lines" />
+          <div className="light-sweep light-sweep-slow" />
+
+          <div className="relative space-y-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
+                  <TinyIconSpark />
+                  Prediction HQ
+                </div>
+
+                <h1 className="mt-3 text-2xl font-black tracking-tight text-white sm:text-4xl">
+                  Прогнози
+                </h1>
+
+                <div className="mt-2 max-w-xl text-sm leading-6 text-white/50">
+                  Обирай матч, шукай сценарій і фіксуй рахунок до дедлайну.
+                </div>
               </div>
 
-              <h1 className="mt-3 text-2xl font-black tracking-tight text-white sm:text-3xl">
-                Прогнози
-              </h1>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  to="../matches"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/[0.1] hover:text-white"
+                >
+                  <TinyIconBall />
+                  Матчі
+                </Link>
 
-              <div className="mt-2 text-sm text-white/45">
-                Обери матч і постав рахунок
+                <Link
+                  to="../leaderboard"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/[0.1] hover:text-white"
+                >
+                  <TinyIconUsers />
+                  Таблиця
+                </Link>
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Link
-                to="../matches"
-                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/[0.08] hover:text-white"
-              >
-                <TinyIconBall />
-                Матчі
-              </Link>
-
-              <Link
-                to="../leaderboard"
-                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/[0.08] hover:text-white"
-              >
-                <TinyIconUsers />
-                Таблиця
-              </Link>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <DecisionStat label="відкрито" value={decisionStats.open} />
+              <DecisionStat
+                label="мої прогнози"
+                value={`${decisionStats.predicted}/${pickerMatches.length}`}
+                tone="green"
+              />
+              <DecisionStat
+                label="закрито"
+                value={decisionStats.locked}
+                tone="amber"
+              />
+              <DecisionStat
+                label="найближче"
+                value={
+                  decisionStats.nextDeadline
+                    ? getTimeUntilLabel(decisionStats.nextDeadline)
+                    : "-"
+                }
+              />
             </div>
           </div>
         </section>
@@ -872,7 +1089,8 @@ export default function PredictPage() {
           </section>
         ) : (
           <div className="space-y-5">
-            <section className="rounded-[32px] border border-white/10 bg-white/[0.05] px-4 py-5 sm:px-6 sm:py-6">
+            <section className="match-ticket relative overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.05] px-4 py-5 sm:px-6 sm:py-6">
+              <div className="stadium-lights" />
               <div className="space-y-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
@@ -901,7 +1119,7 @@ export default function PredictPage() {
                     ) : null}
                   </div>
 
-                  <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/65">
+                  <div className="relative inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/65">
                     <span
                       className={`h-2 w-2 rounded-full ${getStatusDotClass(
                         selectedMatch.status
@@ -911,7 +1129,7 @@ export default function PredictPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
+                <div className="relative grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-6">
                   <div className="flex min-w-0 flex-col items-center gap-3 text-center">
                     <TeamLogo team={selectedMatch.homeTeam} size="lg" />
                     <div className="text-base font-black text-white sm:text-xl">
@@ -920,7 +1138,7 @@ export default function PredictPage() {
                     </div>
                   </div>
 
-                  <div className="flex min-w-[96px] flex-col items-center">
+                  <div className="flex min-w-[96px] flex-col items-center rounded-[28px] border border-white/10 bg-black/20 px-3 py-4">
                     <div className="text-3xl font-black tracking-tight text-white sm:text-5xl">
                       {myPrediction
                         ? `${myPrediction.predictedHome}:${myPrediction.predictedAway}`
@@ -943,11 +1161,11 @@ export default function PredictPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2 text-xs">
+                <div className="relative flex flex-wrap gap-2 text-xs">
                   <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-white/55">
                     <TinyIconClock />
                     Дедлайн:{" "}
-                    {new Date(selected.predictionDeadline).toLocaleString("uk-UA")}
+                    {formatDeadlineShort(selected.predictionDeadline)}
                   </div>
 
                   {selected.customWeight ? (
@@ -965,18 +1183,18 @@ export default function PredictPage() {
               </div>
             </section>
 
-            <section className="rounded-[32px] border border-white/10 bg-white/[0.05] px-4 py-5 sm:px-6 sm:py-6">
+            <section className="score-console rounded-[32px] px-4 py-5 sm:px-6 sm:py-6">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2 text-white">
-                    <TinyIconBall />
+                    <TinyIconSpark />
                     <h3 className="text-lg font-black sm:text-xl">
-                      Швидкий прогноз
+                      Пульт рахунку
                     </h3>
                   </div>
 
                   <div className="mt-1 text-sm text-white/45">
-                    Просто введи рахунок
+                    Підкрути цифри або вибери швидкий сценарій
                   </div>
                 </div>
 
@@ -991,6 +1209,12 @@ export default function PredictPage() {
               {actionData?.error ? (
                 <div className="mb-4 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                   {actionData.error}
+                </div>
+              ) : null}
+
+              {actionData?.message ? (
+                <div className="mb-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm font-bold text-emerald-100">
+                  {actionData.message}
                 </div>
               ) : null}
 
@@ -1014,15 +1238,27 @@ export default function PredictPage() {
               ) : (
                 <Form method="post" className="space-y-4">
                   <input type="hidden" name="matchId" value={selectedMatch.id} />
+                  <input
+                    type="hidden"
+                    name="predictedHome"
+                    value={score.home}
+                  />
+                  <input
+                    type="hidden"
+                    name="predictedAway"
+                    value={score.away}
+                  />
 
                   <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-5">
-                    <QuickScoreInput
-                      name="predictedHome"
+                    <ScoreStepper
                       teamName={
                         selectedMatch.homeTeam.shortName ||
                         selectedMatch.homeTeam.name
                       }
-                      defaultValue={myPrediction?.predictedHome ?? ""}
+                      value={score.home}
+                      onChange={(value) =>
+                        setScore((current) => ({ ...current, home: value }))
+                      }
                       disabled={isSubmitting}
                     />
 
@@ -1030,15 +1266,38 @@ export default function PredictPage() {
                       :
                     </div>
 
-                    <QuickScoreInput
-                      name="predictedAway"
+                    <ScoreStepper
                       teamName={
                         selectedMatch.awayTeam.shortName ||
                         selectedMatch.awayTeam.name
                       }
-                      defaultValue={myPrediction?.predictedAway ?? ""}
+                      value={score.away}
+                      onChange={(value) =>
+                        setScore((current) => ({ ...current, away: value }))
+                      }
                       disabled={isSubmitting}
                     />
+                  </div>
+
+                  <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {quickPresets.map(([home, away]) => (
+                      <button
+                        key={`${home}-${away}`}
+                        type="button"
+                        disabled={isSubmitting}
+                        onClick={() =>
+                          setScore({ home: String(home), away: String(away) })
+                        }
+                        className={`shrink-0 rounded-2xl border px-4 py-2 text-sm font-black transition ${
+                          score.home === String(home) &&
+                          score.away === String(away)
+                            ? "border-emerald-300/35 bg-emerald-400/15 text-emerald-100"
+                            : "border-white/10 bg-white/[0.055] text-white/65 hover:bg-white/[0.09] hover:text-white"
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                      >
+                        {home}:{away}
+                      </button>
+                    ))}
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -1055,13 +1314,23 @@ export default function PredictPage() {
                         : "Зберегти прогноз"}
                     </button>
 
-                    <Link
-                      to={`../predict-advanced/${selectedMatch.id}`}
-                      className="inline-flex h-14 items-center justify-center gap-2 rounded-[22px] border border-white/10 bg-white/[0.05] px-5 text-sm font-bold text-white transition hover:-translate-y-[1px] hover:border-white/20 hover:bg-white/[0.08]"
-                    >
-                      <TinyIconArrow />
-                      Детальний прогноз
-                    </Link>
+                    {!isGuestPreview ? (
+                      <Link
+                        to={`../predict-advanced/${selectedMatch.id}`}
+                        className="inline-flex h-14 items-center justify-center gap-2 rounded-[22px] border border-white/10 bg-white/[0.05] px-5 text-sm font-bold text-white transition hover:-translate-y-[1px] hover:border-white/20 hover:bg-white/[0.08]"
+                      >
+                        <TinyIconArrow />
+                        Детальний прогноз
+                      </Link>
+                    ) : (
+                      <Link
+                        to="../leaderboard"
+                        className="inline-flex h-14 items-center justify-center gap-2 rounded-[22px] border border-white/10 bg-white/[0.05] px-5 text-sm font-bold text-white transition hover:-translate-y-[1px] hover:border-white/20 hover:bg-white/[0.08]"
+                      >
+                        <TinyIconArrow />
+                        Подивитись таблицю
+                      </Link>
+                    )}
                   </div>
                 </Form>
               )}
@@ -1083,9 +1352,26 @@ export default function PredictPage() {
 
               <div className="mt-4 space-y-2">
                 {participantPredictions.length > 0 ? (
-                  participantPredictions.map((item) => (
-                    <PredictionPersonRow key={item.userId} item={item} />
-                  ))
+                  <>
+                    {visibleParticipantPredictions.map((item) => (
+                      <PredictionPersonRow key={item.userId} item={item} />
+                    ))}
+
+                    {hiddenParticipantCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowAllPredictions((current) => !current)
+                        }
+                        className="mt-2 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 text-sm font-bold text-white/70 transition hover:border-white/20 hover:bg-white/[0.08] hover:text-white"
+                      >
+                        <TinyIconUsers />
+                        {showAllPredictions
+                          ? "Сховати"
+                          : `Показати ще ${hiddenParticipantCount}`}
+                      </button>
+                    ) : null}
+                  </>
                 ) : (
                   <div className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-white/45">
                     Поки що тут немає прогнозів

@@ -219,6 +219,15 @@ function formatMatchDateTime(date: Date | string) {
   }).format(new Date(date));
 }
 
+function formatMatchDateCompact(date: Date | string) {
+  return new Intl.DateTimeFormat("uk-UA", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(date));
+}
+
 function buildHalfPitchSlots(formation: string, side: TeamSide): PitchSlot[] {
   const template =
     FORMATION_TEMPLATES.find((item) => item.name === formation) ??
@@ -993,19 +1002,23 @@ function TeamSwitchCard({
   side,
   active,
   score,
+  formation,
+  starters,
   onClick,
 }: {
   team: any;
   side: TeamSide;
   active: boolean;
   score: number;
+  formation: string;
+  starters: number;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-4 rounded-[28px] border px-4 py-4 text-left transition hover:opacity-95"
+      className="advanced-team-card flex items-center gap-4 rounded-[28px] border px-4 py-4 text-left transition hover:-translate-y-[1px] hover:opacity-95"
       style={{
         borderColor: active ? "var(--accent)" : "var(--border)",
         background: active ? "var(--accent-soft)" : "var(--panel-solid)",
@@ -1018,11 +1031,44 @@ function TeamSwitchCard({
           {getSideLabel(side)}
         </div>
         <div className="mt-1 truncate text-lg font-black">{team.name}</div>
+        <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-bold uppercase tracking-[0.12em] opacity-60">
+          <span>{formation}</span>
+          <span>•</span>
+          <span>{starters}/11</span>
+        </div>
       </div>
       <div className="flex h-12 min-w-[52px] items-center justify-center rounded-2xl border border-black/10 bg-black/5 px-3 text-2xl font-black dark:border-white/10 dark:bg-black/10">
         {score}
       </div>
     </button>
+  );
+}
+
+function AdvancedStatCard({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string | number;
+  tone?: "neutral" | "green" | "amber";
+}) {
+  const toneClass =
+    tone === "green"
+      ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
+      : tone === "amber"
+      ? "border-amber-400/20 bg-amber-500/10 text-amber-100"
+      : "border-white/10 bg-white/[0.055] text-white";
+
+  return (
+    <div className={`rounded-2xl border px-3 py-3 ${toneClass}`}>
+      <div className="text-xl font-black leading-none tracking-tight">
+        {value}
+      </div>
+      <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.14em] opacity-55">
+        {label}
+      </div>
+    </div>
   );
 }
 
@@ -1480,7 +1526,8 @@ function PlayerPickerModal({
   );
 }
 export default function PredictAdvancedPage() {
-  const { match, prediction, isLocked } = useLoaderData<typeof loader>();
+  const { match, prediction, isLocked, predictionDeadline } =
+    useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>() as ActionData | undefined;
   const navigation = useNavigation();
 
@@ -1589,6 +1636,15 @@ export default function PredictAdvancedPage() {
 
   const activeMvpPlayer =
     activePlayers.find((p) => p.id === predictedMvpPlayerId) ?? null;
+  const homeStarterCount = getStarterCountForSide(lineupState, "HOME");
+  const awayStarterCount = getStarterCountForSide(lineupState, "AWAY");
+  const totalScorersPicked = scorerState.length;
+  const detailProgress =
+    (predictedHome || predictedAway ? 1 : 0) +
+    (homeStarterCount > 0 ? 1 : 0) +
+    (awayStarterCount > 0 ? 1 : 0) +
+    (totalScorersPicked > 0 ? 1 : 0) +
+    (predictedMvpPlayerId ? 1 : 0);
 
   function hasLineupForSide(side: TeamSide) {
     return lineupState.some((item) => item.teamSide === side && item.isStarter);
@@ -1802,41 +1858,86 @@ export default function PredictAdvancedPage() {
         <input type="hidden" name="lineupJson" value={JSON.stringify(lineupState)} />
         <input type="hidden" name="scorersJson" value={JSON.stringify(scorerState)} />
 
-        <section className="theme-panel rounded-[30px] border px-4 py-4 shadow-sm">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--background)] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--foreground)]">
-                <IconBall />
-                Advanced predict
+        <section className="advanced-predict-studio overflow-hidden rounded-[32px] px-4 py-5 sm:px-6 sm:py-6">
+          <div className="tactical-lines" />
+          <div className="light-sweep light-sweep-slow" />
+
+          <div className="relative space-y-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/55">
+                  <IconStarPlayer />
+                  Analysis Room
+                </div>
+
+                <h1 className="mt-3 text-2xl font-black tracking-tight text-white sm:text-4xl">
+                  Детальний прогноз
+                </h1>
+
+                <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:max-w-xl sm:gap-5">
+                  <div className="min-w-0 text-right">
+                    <div className="truncate text-sm font-black text-white sm:text-lg">
+                      {match.homeTeam.shortName || match.homeTeam.name}
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      {predictedHomeFormation}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[24px] border border-white/10 bg-black/25 px-4 py-3 text-center">
+                    <div className="text-3xl font-black tracking-tight text-white">
+                      {predictedHome}:{predictedAway}
+                    </div>
+                    <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white/35">
+                      Plan
+                    </div>
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-black text-white sm:text-lg">
+                      {match.awayTeam.shortName || match.awayTeam.name}
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      {predictedAwayFormation}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 text-sm text-white/45">
+                  {match.tournament?.name ? `${match.tournament.name} · ` : ""}
+                  {formatMatchDateTime(match.startTime)}
+                </div>
               </div>
 
-              <h1 className="mt-3 text-2xl font-black">Детальний прогноз</h1>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  to={`../predict?matchId=${match.id}`}
+                  className="inline-flex h-11 items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-4 text-sm font-medium text-white/75 transition hover:bg-white/[0.1] hover:text-white"
+                >
+                  <IconScore />
+                  Назад
+                </Link>
 
-              <div className="mt-2 text-sm text-[--text-muted]">
-                {match.homeTeam.name} — {match.awayTeam.name}
-              </div>
-              <div className="mt-1 text-sm text-[var(--text-muted)]">
-                {formatMatchDateTime(match.startTime)}
+                <button
+                  type="submit"
+                  disabled={isLocked || isSubmitting}
+                  className="inline-flex h-11 items-center gap-2 rounded-2xl border border-white/15 bg-white px-4 text-sm font-black text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <IconStarPlayer />
+                  {isSubmitting ? "Зберігаю..." : "Зберегти прогноз"}
+                </button>
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Link
-                to={`../predict?matchId=${match.id}`}
-                className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.05] dark:text-white/75 dark:hover:bg-white/[0.08] dark:hover:text-white"
-              >
-                <IconScore />
-                Назад
-              </Link>
-
-              <button
-                type="submit"
-                disabled={isLocked || isSubmitting}
-                className="inline-flex h-11 items-center gap-2 rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black dark:hover:bg-white/90"
-              >
-                <IconStarPlayer />
-                {isSubmitting ? "Зберігаю..." : "Зберегти прогноз"}
-              </button>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <AdvancedStatCard label="готовність" value={`${detailProgress}/5`} tone="green" />
+              <AdvancedStatCard label="склади" value={`${homeStarterCount + awayStarterCount}/22`} />
+              <AdvancedStatCard label="голи" value={totalScorersPicked} />
+              <AdvancedStatCard
+                label="дедлайн"
+                value={formatMatchDateCompact(predictionDeadline)}
+                tone={isLocked ? "amber" : "neutral"}
+              />
             </div>
           </div>
 
@@ -1859,6 +1960,8 @@ export default function PredictAdvancedPage() {
             side="HOME"
             active={activeTeamSide === "HOME"}
             score={predictedHome}
+            formation={predictedHomeFormation}
+            starters={homeStarterCount}
             onClick={() => setActiveTeamSide("HOME")}
           />
           <TeamSwitchCard
@@ -1866,11 +1969,13 @@ export default function PredictAdvancedPage() {
             side="AWAY"
             active={activeTeamSide === "AWAY"}
             score={predictedAway}
+            formation={predictedAwayFormation}
+            starters={awayStarterCount}
             onClick={() => setActiveTeamSide("AWAY")}
           />
         </section>
 
-        <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 text-[var(--text)] shadow-sm sm:p-5">
+        <section className="advanced-control-panel rounded-[28px] p-4 text-[var(--text)] sm:p-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--background)] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em]">
@@ -1941,8 +2046,8 @@ export default function PredictAdvancedPage() {
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_380px]">
           <div className="space-y-4">
-            <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 shadow-sm sm:p-5">
-              <div className="mb-4 flex flex-wrap gap-2">
+            <section className="advanced-control-panel rounded-[28px] p-4 sm:p-5">
+              <div className="mb-4 grid grid-cols-3 gap-2 rounded-[22px] border border-[var(--border)] bg-[var(--background)] p-1.5">
                 {[
                   { key: "overview", label: "Рахунок", icon: <IconScore /> },
                   { key: "lineup", label: "Склад", icon: <IconFormation /> },
@@ -1953,14 +2058,14 @@ export default function PredictAdvancedPage() {
                     type="button"
                     onClick={() => setActiveTab(tab.key as AdvancedTab)}
                     className={[
-                      "inline-flex h-11 items-center gap-2 rounded-2xl border px-4 text-sm font-semibold transition",
+                      "inline-flex h-11 min-w-0 items-center justify-center gap-2 rounded-2xl border px-2 text-xs font-black transition sm:px-4 sm:text-sm",
                       activeTab === tab.key
-                        ? "border-slate-300 bg-slate-900 text-white dark:border-white/20 dark:bg-white dark:text-black"
-                        : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-white/10 dark:bg-white/[0.05] dark:text-white/70 dark:hover:bg-white/[0.08] dark:hover:text-white",
+                        ? "border-white/20 bg-white text-black shadow-[0_10px_22px_rgba(0,0,0,0.18)]"
+                        : "border-transparent bg-transparent text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text)]",
                     ].join(" ")}
                   >
                     {tab.icon}
-                    {tab.label}
+                    <span className="truncate">{tab.label}</span>
                   </button>
                 ))}
               </div>
@@ -2011,30 +2116,45 @@ export default function PredictAdvancedPage() {
           <div className="space-y-4">
             {activeTab === "overview" ? (
               <>
-                <section className="rounded-[28px] border border-[var(--border)] bg-[var(--bg-elevated)] p-4 text-slate-900 shadow-sm dark:border-white/10 dark:bg-white/[0.05] dark:text-white sm:p-5">
-                  <div className="text-lg font-semibold text-[var(--text)]">Рахунок</div>
-                  <div className="mt-1 text-sm text-[var(--text)]">
+                <section className="advanced-control-panel rounded-[28px] p-4 text-[var(--text)] sm:p-5">
+                  <div className="flex items-center gap-2 text-lg font-black">
+                    <IconScore />
+                    Рахунок
+                  </div>
+                  <div className="mt-1 text-sm text-[var(--text-muted)]">
                     Визначи основний рахунок матчу
                   </div>
 
                   <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--background)] p-4 dark:border-white/10 dark:bg-white/[0.03]">
-                      <div className="text-sm font-semibold text-[var(--text)]">{match.homeTeam.name}</div>
+                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--background)] p-4">
+                      <div className="flex items-center gap-3">
+                        <TeamLogo team={match.homeTeam} />
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-black text-[var(--text)]">
+                            {match.homeTeam.name}
+                          </div>
+                          <div className="text-xs text-[var(--text-muted)]">
+                            {predictedHomeFormation}
+                          </div>
+                        </div>
+                      </div>
                       <div className="mt-3 flex items-center justify-between gap-3">
                         <button
                           type="button"
                           disabled={isLocked || predictedHome <= 0}
                           onClick={() => setPredictedHome(Math.max(0, predictedHome - 1))}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--background)] text-lg text-[var(--text)]"
+                          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] text-lg font-black text-[var(--text)] disabled:opacity-40"
                         >
                           -
                         </button>
-                        <div className="text-3xl font-black text-[var(--text)]">{predictedHome}</div>
+                        <div className="min-w-[72px] rounded-[22px] border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 text-center text-4xl font-black text-[var(--text)]">
+                          {predictedHome}
+                        </div>
                         <button
                           type="button"
                           disabled={isLocked}
                           onClick={() => setPredictedHome(predictedHome + 1)}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--background)] text-lg text-[var(--text)]"
+                          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] text-lg font-black text-[var(--text)] disabled:opacity-40"
                         >
                           +
                         </button>
@@ -2042,22 +2162,34 @@ export default function PredictAdvancedPage() {
                     </div>
 
                     <div className="rounded-2xl border border-[var(--border)] bg-[var(--background)] p-4">
-                      <div className="text-sm font-semibold text-[var(--text)]">{match.awayTeam.name}</div>
+                      <div className="flex items-center gap-3">
+                        <TeamLogo team={match.awayTeam} />
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-black text-[var(--text)]">
+                            {match.awayTeam.name}
+                          </div>
+                          <div className="text-xs text-[var(--text-muted)]">
+                            {predictedAwayFormation}
+                          </div>
+                        </div>
+                      </div>
                       <div className="mt-3 flex items-center justify-between gap-3">
                         <button
                           type="button"
                           disabled={isLocked || predictedAway <= 0}
                           onClick={() => setPredictedAway(Math.max(0, predictedAway - 1))}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] text-lg text-[var(--text)] pointer"
+                          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] text-lg font-black text-[var(--text)] disabled:opacity-40"
                         >
                           -
                         </button>
-                        <div className="text-3xl font-black text-[var(--text)]">{predictedAway}</div>
+                        <div className="min-w-[72px] rounded-[22px] border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 text-center text-4xl font-black text-[var(--text)]">
+                          {predictedAway}
+                        </div>
                         <button
                           type="button"
                           disabled={isLocked}
                           onClick={() => setPredictedAway(predictedAway + 1)}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--background)] text-lg text-[var(--text)]"
+                          className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] text-lg font-black text-[var(--text)] disabled:opacity-40"
                         >
                           +
                         </button>
@@ -2066,9 +2198,9 @@ export default function PredictAdvancedPage() {
                   </div>
                 </section>
 
-                <section className="rounded-[28px] border border-[var(--border)] bg-[var(--background)] p-4 text-[var(--text)] shadow-sm sm:p-5">
-                  <div className="text-lg font-semibold">Нотатки</div>
-                  <div className="mt-1 text-sm text-[var(--text)]">
+                <section className="advanced-control-panel rounded-[28px] p-4 text-[var(--text)] sm:p-5">
+                  <div className="text-lg font-black">Нотатки</div>
+                  <div className="mt-1 text-sm text-[var(--text-muted)]">
                     Коротко, якщо хочеш
                   </div>
 
@@ -2076,7 +2208,7 @@ export default function PredictAdvancedPage() {
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     rows={5}
-                    className="mt-4 w-full rounded-2xl border border-[var(--border)] bg-[var(--background)] text-[var(--text)] px-4 py-3 text-sm outline-none "
+                    className="mt-4 w-full resize-none rounded-2xl border border-[var(--border)] bg-[var(--background)] px-4 py-3 text-sm text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
                     placeholder="Тут можна залишити свої думки по матчу"
                     disabled={isLocked}
                   />
@@ -2085,9 +2217,12 @@ export default function PredictAdvancedPage() {
             ) : null}
 
             {activeTab === "lineup" ? (
-              <section className="rounded-[28px] border border-[var(--border)] bg-[var(--background)] p-4 text-[var(--text)] shadow-sm sm:p-5">
-                <div className="text-lg font-semibold">Склад активної команди</div>
-                <div className="mt-1 text-sm text-[var(--text)]">
+              <section className="advanced-control-panel rounded-[28px] p-4 text-[var(--text)] sm:p-5">
+                <div className="flex items-center gap-2 text-lg font-black">
+                  <IconFormation />
+                  Склад активної команди
+                </div>
+                <div className="mt-1 text-sm text-[var(--text-muted)]">
                   Працює саме через твоє поле: натискаєш на позицію на полі — відкривається вибір гравця.
                 </div>
 
@@ -2135,9 +2270,12 @@ export default function PredictAdvancedPage() {
 
             {activeTab === "events" ? (
               <>
-                <section className="rounded-[28px] border border-[var(--border)] bg-[var(--background)] p-4 text-[var(--text)] shadow-sm dark:border-white/10 dark:bg-white/[0.05] dark:text-white sm:p-5">
-                  <div className="text-lg font-semibold">Голи активної команди</div>
-                  <div className="mt-1 text-sm text-[var(--text)]">
+                <section className="advanced-control-panel rounded-[28px] p-4 text-[var(--text)] sm:p-5">
+                  <div className="flex items-center gap-2 text-lg font-black">
+                    <IconBall />
+                    Голи активної команди
+                  </div>
+                  <div className="mt-1 text-sm text-[var(--text-muted)]">
                     Можна вибрати будь-якого гравця активної команди в межах прогнозованої кількості голів.
                   </div>
 
@@ -2266,9 +2404,12 @@ export default function PredictAdvancedPage() {
                   </div>
                 </section>
 
-                <section className="rounded-[28px] border border-[var(--border)] bg-[var(--background)] p-4 text-[var(--text)] shadow-sm sm:p-5">
-                  <div className="text-lg font-semibold">MVP команди</div>
-                  <div className="mt-1 text-sm text-[var(--text)]">
+                <section className="advanced-control-panel rounded-[28px] p-4 text-[var(--text)] sm:p-5">
+                  <div className="flex items-center gap-2 text-lg font-black">
+                    <IconStarPlayer />
+                    MVP команди
+                  </div>
+                  <div className="mt-1 text-sm text-[var(--text-muted)]">
                     MVP можна вибрати з будь-якого гравця активної команди.
                   </div>
 

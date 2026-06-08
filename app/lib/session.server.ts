@@ -1,4 +1,5 @@
 import {
+  createCookie,
   createCookieSessionStorage,
   redirect,
 } from "react-router";
@@ -22,7 +23,7 @@ export const sessionStorage = createCookieSessionStorage<
   SessionFlashData
 >({
   cookie: {
-    name: "__session",
+    name: "__dallballyour_session",
     httpOnly: true,
     maxAge: 60 * 60 * 24 * 30,
     path: "/",
@@ -34,13 +35,39 @@ export const sessionStorage = createCookieSessionStorage<
 
 export const { getSession, commitSession, destroySession } = sessionStorage;
 
+const devAutoLoginDisabledCookie = createCookie("__dallballyour_dev_auto_login_disabled", {
+  httpOnly: true,
+  path: "/",
+  sameSite: "lax",
+  maxAge: 60 * 60 * 24 * 30,
+  secure: process.env.NODE_ENV === "production",
+});
+
 export async function getUserSession(request: Request) {
   return getSession(request.headers.get("Cookie"));
 }
 
 export async function getUserId(request: Request) {
   const session = await getUserSession(request);
-  return session.get("userId") || null;
+  const sessionUserId = session.get("userId");
+
+  if (sessionUserId) {
+    return sessionUserId;
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    const isAutoLoginDisabled = await devAutoLoginDisabledCookie.parse(
+      request.headers.get("Cookie")
+    );
+
+    if (isAutoLoginDisabled) {
+      return null;
+    }
+
+    return process.env.DEV_AUTO_LOGIN_USER_ID || null;
+  }
+
+  return null;
 }
 
 export async function requireUserId(
@@ -67,20 +94,36 @@ export async function createUserSession({
 }) {
   const session = await getUserSession(request);
   session.set("userId", userId);
+  const headers = new Headers();
+
+  headers.append("Set-Cookie", await commitSession(session));
+
+  if (process.env.NODE_ENV !== "production") {
+    headers.append(
+      "Set-Cookie",
+      await devAutoLoginDisabledCookie.serialize("", { maxAge: 0 })
+    );
+  }
 
   return redirect(redirectTo, {
-    headers: {
-      "Set-Cookie": await commitSession(session),
-    },
+    headers,
   });
 }
 
 export async function logout(request: Request) {
   const session = await getUserSession(request);
+  const headers = new Headers();
+
+  headers.append("Set-Cookie", await destroySession(session));
+
+  if (process.env.NODE_ENV !== "production") {
+    headers.append(
+      "Set-Cookie",
+      await devAutoLoginDisabledCookie.serialize("1")
+    );
+  }
 
   return redirect("/login", {
-    headers: {
-      "Set-Cookie": await destroySession(session),
-    },
+    headers,
   });
 }

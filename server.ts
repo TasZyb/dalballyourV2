@@ -55,6 +55,7 @@ io.on("connection", (socket) => {
 
       io.to(`chat:${chatId}`).emit("chat:new-message", {
         id: savedMessage.id,
+        chatId: savedMessage.chatId,
         text: savedMessage.text,
         isDeleted: savedMessage.isDeleted,
         isEdited: savedMessage.isEdited,

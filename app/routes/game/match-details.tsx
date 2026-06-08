@@ -11,6 +11,10 @@ import {
 import { useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
+import {
+  guestPreviewUser,
+  isGuestPreviewGame,
+} from "~/lib/guest-preview.server";
 import { FootballLoader } from "~/components/FootballLoader";
 import { getTeamLogoSrc, getTournamentLogoSrc } from "~/lib/logo-utils";
 
@@ -140,27 +144,16 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
   const gameId = params.gameId;
   const matchId = params.matchId;
 
-  if (!currentUser) throw redirect("/login");
-
   if (!gameId || !matchId) {
     throw new Response("Game or match not found", { status: 404 });
   }
-
-  const membership = await prisma.gameMember.findFirst({
-    where: {
-      gameId,
-      userId: currentUser.id,
-      status: "ACTIVE",
-    },
-  });
-
-  if (!membership) throw redirect("/");
 
   const game = await prisma.game.findUnique({
     where: { id: gameId },
     select: {
       id: true,
       name: true,
+      slug: true,
       lockMinutesBeforeStart: true,
       allowMemberPredictionsEdit: true,
       timezone: true,
@@ -175,6 +168,23 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Game not found", { status: 404 });
   }
 
+  const isGuestPreview = isGuestPreviewGame(game);
+  const activeUser = currentUser ?? guestPreviewUser;
+
+  if (!currentUser && !isGuestPreview) throw redirect("/login");
+
+  if (currentUser && !isGuestPreview) {
+    const membership = await prisma.gameMember.findFirst({
+      where: {
+        gameId,
+        userId: currentUser.id,
+        status: "ACTIVE",
+      },
+    });
+
+    if (!membership) throw redirect("/");
+  }
+
   const gameMatches = await prisma.gameMatch.findMany({
     where: { gameId },
     include: {
@@ -187,7 +197,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           predictions: {
             where: {
               gameId,
-              userId: currentUser.id,
+              userId: activeUser.id,
             },
             take: 1,
           },
@@ -327,7 +337,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         userId: prediction.userId,
         name: getDisplayName(prediction.user),
         image: prediction.user.image,
-        isMe: prediction.userId === currentUser.id,
+        isMe: prediction.userId === activeUser.id,
         predictedHome: prediction.predictedHome,
         predictedAway: prediction.predictedAway,
         submittedAt: prediction.submittedAt,
@@ -374,13 +384,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     match: {
       ...selectedMatch,
       myPrediction:
-        selectedMatch.predictions.find((p) => p.userId === currentUser.id) ??
+        selectedMatch.predictions.find((p) => p.userId === activeUser.id) ??
         null,
     },
   };
 
   return data({
-    currentUser,
+    currentUser: activeUser,
+    isGuestPreview,
     game,
     compactMatches,
     selectedMatchBlock,
@@ -393,8 +404,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const currentUser = await getCurrentUser(request);
   const gameId = params.gameId;
   const routeMatchId = params.matchId;
-
-  if (!currentUser) throw redirect("/login");
 
   if (!gameId || !routeMatchId) {
     throw new Response("Game or match not found", { status: 404 });
@@ -419,21 +428,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return data({ error: "Введи коректний рахунок." }, { status: 400 });
   }
 
-  const membership = await prisma.gameMember.findFirst({
-    where: {
-      gameId,
-      userId: currentUser.id,
-      status: "ACTIVE",
-    },
-  });
-
-  if (!membership) {
-    return data({ error: "Ти не є учасником цієї гри." }, { status: 403 });
-  }
-
   const game = await prisma.game.findUnique({
     where: { id: gameId },
     select: {
+      slug: true,
       lockMinutesBeforeStart: true,
       allowMemberPredictionsEdit: true,
       defaultRoundWeight: true,
@@ -442,6 +440,24 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   if (!game) {
     return data({ error: "Гру не знайдено." }, { status: 404 });
+  }
+
+  const isGuestPreview = isGuestPreviewGame(game);
+
+  if (!currentUser && !isGuestPreview) throw redirect("/login");
+
+  if (currentUser && !isGuestPreview) {
+    const membership = await prisma.gameMember.findFirst({
+      where: {
+        gameId,
+        userId: currentUser.id,
+        status: "ACTIVE",
+      },
+    });
+
+    if (!membership) {
+      return data({ error: "Ти не є учасником цієї гри." }, { status: 403 });
+    }
   }
 
   const gameMatch = await prisma.gameMatch.findFirst({
@@ -477,10 +493,24 @@ export async function action({ request, params }: ActionFunctionArgs) {
     );
   }
 
+  if (!currentUser && isGuestPreview) {
+    return data({
+      ok: true,
+      isGuestPreview: true,
+      message:
+        "Guest-прогноз прийнято для проби. У базу він не записується.",
+      prediction: {
+        matchId,
+        predictedHome,
+        predictedAway,
+      },
+    });
+  }
+
   const existingPrediction = await prisma.prediction.findUnique({
     where: {
       userId_gameId_matchId: {
-        userId: currentUser.id,
+        userId: currentUser!.id,
         gameId,
         matchId,
       },
@@ -503,13 +533,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
   await prisma.prediction.upsert({
     where: {
       userId_gameId_matchId: {
-        userId: currentUser.id,
+        userId: currentUser!.id,
         gameId,
         matchId,
       },
     },
     create: {
-      userId: currentUser.id,
+      userId: currentUser!.id,
       gameId,
       matchId,
       predictedHome,

@@ -53,11 +53,44 @@ export async function loader({ request }: LoaderFunctionArgs) {
     throw new Error("GOOGLE_CLIENT_ID is not set");
   }
 
-  return data({ googleClientId });
+  return data({
+    googleClientId,
+    canUseTestLogin: process.env.NODE_ENV !== "production",
+  });
 }
 
 export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
+  const intent = String(formData.get("intent") || "");
+
+  if (intent === "test-login") {
+    if (process.env.NODE_ENV === "production") {
+      return data({ error: "Test login доступний тільки в dev режимі" }, { status: 403 });
+    }
+
+    const user = await prisma.user.upsert({
+      where: { email: "student.demo@example.test" },
+      update: {
+        name: "Demo Student",
+        displayName: "Учень Demo",
+        emailVerified: new Date(),
+      },
+      create: {
+        email: "student.demo@example.test",
+        name: "Demo Student",
+        displayName: "Учень Demo",
+        emailVerified: new Date(),
+      },
+      select: { id: true },
+    });
+
+    return createUserSession({
+      request,
+      userId: user.id,
+      redirectTo: "/me",
+    });
+  }
+
   const credential = String(formData.get("credential") || "");
 
   if (!credential) {
@@ -119,7 +152,7 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function LoginPage() {
-  const { googleClientId } = useLoaderData<typeof loader>();
+  const { googleClientId, canUseTestLogin } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
 
   const buttonRef = useRef<HTMLDivElement | null>(null);
@@ -238,6 +271,18 @@ export default function LoginPage() {
           </Form>
 
           <div ref={buttonRef} className="mt-4 flex justify-center" />
+
+          {canUseTestLogin ? (
+            <Form method="post" className="mt-4">
+              <input type="hidden" name="intent" value="test-login" />
+              <button
+                type="submit"
+                className="w-full rounded-2xl border border-emerald-400/25 bg-emerald-400/12 px-4 py-3 text-sm font-black text-emerald-100 transition hover:bg-emerald-400/18"
+              >
+                Зайти як учень
+              </button>
+            </Form>
+          ) : null}
 
           <p className="mt-4 text-center text-xs text-white/45">
             Якщо кнопка не з’явилась, перевір `GOOGLE_CLIENT_ID` і Authorized JavaScript origins.

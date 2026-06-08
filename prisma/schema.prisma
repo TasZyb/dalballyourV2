@@ -26,6 +26,8 @@ model User {
   wallet             UserWallet?
   coinTransactions   CoinTransaction[]
   createdCoinActions CoinTransaction[] @relation("CoinGrantedBy")
+  dailyQuizAttempts  DailyQuizAttempt[]
+  predictionBoosts   PredictionBoost[]
 
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
@@ -42,6 +44,9 @@ model User {
 
   chatMessages  ChatMessage[]
   chatReactions ChatReaction[]
+  playerCards   GamePlayerCard[]
+  courseAccesses CourseAccess[]
+  courseOrders   CourseOrder[]
 
   @@index([email])
   @@index([displayName])
@@ -107,6 +112,9 @@ model Team {
   formSnapshots TeamFormSnapshot[]
   lineups       MatchLineup[]
   games         Game[]
+  playerCards   GamePlayerCard[] @relation("GamePlayerCardClub")
+  matchFacts    MatchFactEvent[]
+  quizQuestions DailyQuizQuestion[]
 
   @@unique([name])
   @@index([shortName])
@@ -176,6 +184,8 @@ model Player {
   mvpPredictions        Prediction[]           @relation("PredictionMvpPlayer")
   predictionScorerPicks PredictionScorerPick[]
   predictionLineupPicks PredictionLineupPick[]
+  matchFacts            MatchFactEvent[]
+  quizQuestions         DailyQuizQuestion[]
 
   @@unique([teamId, name], map: "player_teamId_name_key")
   @@index([teamId])
@@ -303,6 +313,8 @@ model Match {
   gameMatches      GameMatch[]
   coinTransactions CoinTransaction[]
   lineups          MatchLineup[]
+  facts            MatchFactEvent[]
+  quizQuestions    DailyQuizQuestion[]
 
   chats        Chat[]
   chatMessages ChatMessage[]
@@ -471,6 +483,10 @@ model Game {
   gameMatches      GameMatch[]
   predictions      Prediction[]
   coinTransactions CoinTransaction[]
+  playerCards      GamePlayerCard[]
+  dailyQuizQuestions DailyQuizQuestion[]
+  dailyQuizAttempts  DailyQuizAttempt[]
+  predictionBoosts   PredictionBoost[]
 
   chats        Chat[]
   chatMessages ChatMessage[]
@@ -724,6 +740,45 @@ model PredictionScorerPick {
   @@index([playerId])
 }
 
+model GamePlayerCard {
+  id     String @id @default(cuid())
+  gameId String
+  userId String
+
+  rating         Int @default(40)
+  previousRating Int @default(40)
+  ratingDelta    Int @default(0)
+
+  weightedPoints Int @default(0)
+  rawPoints      Int @default(0)
+  exactHits      Int @default(0)
+  correctResults Int @default(0)
+  wrongHits      Int @default(0)
+  predictions    Int @default(0)
+  finishedPicks  Int @default(0)
+  currentStreak  Int @default(0)
+  bestStreak     Int @default(0)
+  accuracyRate   Float @default(0)
+  exactRate      Float @default(0)
+
+  photoUrl   String?
+  clubTeamId String?
+
+  statsHash  String?
+  computedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  game     Game  @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  user     User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clubTeam Team? @relation("GamePlayerCardClub", fields: [clubTeamId], references: [id], onDelete: SetNull)
+
+  @@unique([gameId, userId])
+  @@index([gameId, rating])
+  @@index([userId])
+  @@index([clubTeamId])
+}
+
 model UserWallet {
   id     String @id @default(cuid())
   userId String @unique
@@ -736,6 +791,214 @@ model UserWallet {
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Course {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  title       String
+  subtitle    String?
+  description String?
+
+  priceCents Int    @default(0)
+  currency   String @default("UAH")
+
+  coverUrl    String?
+  level       String?
+  duration    String?
+  lessonsCount Int   @default(0)
+
+  isPublished Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accesses CourseAccess[]
+  orders   CourseOrder[]
+
+  @@index([isPublished])
+  @@index([priceCents])
+}
+
+model CourseAccess {
+  id       String @id @default(cuid())
+  userId   String
+  courseId String
+  orderId  String?
+
+  source    CourseAccessSource @default(PURCHASE)
+  grantedAt DateTime           @default(now())
+  revokedAt DateTime?
+
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  order  CourseOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, courseId])
+  @@index([courseId])
+  @@index([orderId])
+  @@index([userId, revokedAt])
+}
+
+model CourseOrder {
+  id       String @id @default(cuid())
+  userId   String
+  courseId String
+
+  status CourseOrderStatus @default(PENDING)
+
+  amountCents Int
+  currency    String @default("UAH")
+
+  paymentProvider          String?
+  providerCheckoutSessionId String?
+  providerPaymentIntentId   String?
+  providerRawPayload        Json?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  paidAt      DateTime?
+  cancelledAt DateTime?
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course  Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  accesses CourseAccess[]
+
+  @@index([userId, status])
+  @@index([courseId])
+  @@index([providerCheckoutSessionId])
+}
+
+model MatchFactEvent {
+  id      String @id @default(cuid())
+  matchId String
+  teamId  String?
+  playerId String?
+
+  type   MatchFactEventType
+  minute Int?
+  value  Int?
+
+  label    String?
+  metadata Json?
+
+  source          String?
+  sourceEventId   String?
+  sourceUpdatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  match  Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  player Player? @relation(fields: [playerId], references: [id], onDelete: SetNull)
+
+  @@unique([matchId, sourceEventId])
+  @@index([matchId, type])
+  @@index([teamId])
+  @@index([playerId])
+}
+
+model DailyQuizQuestion {
+  id     String @id @default(cuid())
+  gameId String
+
+  quizDate DateTime
+  type     DailyQuizQuestionType
+
+  prompt        String
+  options       Json
+  correctAnswer String
+  explanation   String?
+
+  sourceMatchId  String?
+  sourceTeamId   String?
+  sourcePlayerId String?
+
+  rewardCoins      Int @default(10)
+  rewardBoostValue Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  game         Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  sourceMatch  Match?  @relation(fields: [sourceMatchId], references: [id], onDelete: SetNull)
+  sourceTeam   Team?   @relation(fields: [sourceTeamId], references: [id], onDelete: SetNull)
+  sourcePlayer Player? @relation(fields: [sourcePlayerId], references: [id], onDelete: SetNull)
+
+  answers DailyQuizAnswer[]
+
+  @@index([gameId, quizDate])
+  @@index([sourceMatchId])
+}
+
+model DailyQuizAttempt {
+  id     String @id @default(cuid())
+  userId String
+  gameId String
+
+  quizDate DateTime
+
+  score             Int @default(0)
+  totalQuestions    Int @default(0)
+  coinsAwarded      Int @default(0)
+  boostAwardedValue Int @default(0)
+
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  answers DailyQuizAnswer[]
+  boosts  PredictionBoost[]
+
+  @@unique([userId, gameId, quizDate])
+  @@index([gameId, quizDate])
+  @@index([userId])
+}
+
+model DailyQuizAnswer {
+  id         String @id @default(cuid())
+  attemptId  String
+  questionId String
+
+  selectedAnswer String
+  isCorrect      Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  attempt  DailyQuizAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question DailyQuizQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+  @@index([questionId])
+}
+
+model PredictionBoost {
+  id     String @id @default(cuid())
+  userId String
+  gameId String
+
+  sourceAttemptId String?
+
+  value  Int @default(2)
+  status PredictionBoostStatus @default(AVAILABLE)
+
+  expiresAt DateTime?
+  appliedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game          Game              @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  sourceAttempt DailyQuizAttempt? @relation(fields: [sourceAttemptId], references: [id], onDelete: SetNull)
+
+  @@index([userId, gameId, status])
+  @@index([gameId])
+  @@index([sourceAttemptId])
 }
 
 model CoinTransaction {
@@ -791,9 +1054,53 @@ enum CoinReason {
   GAME_WIN
   STREAK_BONUS
   DAILY_BONUS
+  DAILY_QUIZ
+  PREDICTION_BOOST
   ADMIN_GRANT
   ADMIN_REMOVE
   SHOP_PURCHASE
+}
+
+enum MatchFactEventType {
+  GOAL
+  ASSIST
+  OWN_GOAL
+  PENALTY_SCORED
+  PENALTY_MISSED
+  YELLOW_CARD
+  RED_CARD
+  SUBSTITUTION
+  HAT_TRICK
+  PLAYER_OF_MATCH
+}
+
+enum DailyQuizQuestionType {
+  MATCH_RESULT
+  MATCH_SCORE
+  TEAM_OPPONENT
+  TEAM_TOURNAMENT
+  GOAL_SCORER
+  HAT_TRICK_PLAYER
+}
+
+enum PredictionBoostStatus {
+  AVAILABLE
+  APPLIED
+  EXPIRED
+}
+
+enum CourseAccessSource {
+  PURCHASE
+  ADMIN_GRANT
+  PROMO
+}
+
+enum CourseOrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+  FAILED
+  REFUNDED
 }
 
 enum MatchStatus {
