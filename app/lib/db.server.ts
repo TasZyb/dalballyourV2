@@ -27,24 +27,30 @@ function getDatabaseUrl() {
   }
 }
 
-export const prisma =
-  global.__prisma ??
-  (() => {
-    const databaseUrl = getDatabaseUrl();
+function createPrismaClient() {
+  const databaseUrl = getDatabaseUrl();
 
-    return new PrismaClient({
-      ...(databaseUrl
-        ? {
-            datasources: {
-              db: {
-                url: databaseUrl,
-              },
+  return new PrismaClient({
+    ...(databaseUrl
+      ? {
+          datasources: {
+            db: {
+              url: databaseUrl,
             },
-          }
-        : {}),
-      log: ["error", "warn"],
-    });
-  })();
+          },
+        }
+      : {}),
+    log: ["error", "warn"],
+  });
+}
+
+function hasCurrentPrismaDelegates(client: PrismaClient | undefined) {
+  return Boolean(client && "bracketPrediction" in client);
+}
+
+export const prisma = hasCurrentPrismaDelegates(global.__prisma)
+  ? global.__prisma!
+  : createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
   global.__prisma = prisma;

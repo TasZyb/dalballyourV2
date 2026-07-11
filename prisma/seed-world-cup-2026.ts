@@ -75,6 +75,57 @@ type ParsedMatch = {
   externalId: string;
 };
 
+const knownFutureKnockoutMatches: ParsedMatch[] = [
+  {
+    roundName: "Quarter Final",
+    roundOrder: 40,
+    stageLabel: "Knockout Stage",
+    home: "Norway",
+    away: "England",
+    venue: "Hard Rock Stadium, Miami",
+    startTime: new Date("2026-07-11T21:00:00.000Z"),
+    status: MatchStatus.SCHEDULED,
+    homeScore: null,
+    awayScore: null,
+    penaltyHome: null,
+    penaltyAway: null,
+    matchdayLabel: "Quarter Final",
+    externalId: "fifa-wc-2026-quarter-final-norway-england",
+  },
+  {
+    roundName: "Quarter Final",
+    roundOrder: 40,
+    stageLabel: "Knockout Stage",
+    home: "Argentina",
+    away: "Switzerland",
+    venue: "Arrowhead Stadium, Kansas City",
+    startTime: new Date("2026-07-12T01:00:00.000Z"),
+    status: MatchStatus.SCHEDULED,
+    homeScore: null,
+    awayScore: null,
+    penaltyHome: null,
+    penaltyAway: null,
+    matchdayLabel: "Quarter Final",
+    externalId: "fifa-wc-2026-quarter-final-argentina-switzerland",
+  },
+  {
+    roundName: "Semi Final",
+    roundOrder: 50,
+    stageLabel: "Knockout Stage",
+    home: "France",
+    away: "Spain",
+    venue: "AT&T Stadium, Dallas",
+    startTime: new Date("2026-07-14T19:00:00.000Z"),
+    status: MatchStatus.SCHEDULED,
+    homeScore: null,
+    awayScore: null,
+    penaltyHome: null,
+    penaltyAway: null,
+    matchdayLabel: "Semi Final",
+    externalId: "fifa-wc-2026-semi-final-france-spain",
+  },
+];
+
 function cleanHtml(value: string) {
   return value
     .replace(/<style[\s\S]*?<\/style>/g, "")
@@ -490,6 +541,24 @@ async function main() {
     const fallbackHtml = await fallbackResponse.text();
     matches = [...parseMatches(fallbackHtml), ...parseKnockoutMatches(fallbackHtml)];
   }
+
+  const existingMatchKeys = new Set(
+    matches.map((match) =>
+      [
+        match.roundName,
+        [match.home, match.away].sort().join(":"),
+      ].join("|")
+    )
+  );
+  const missingFutureMatches = knownFutureKnockoutMatches.filter(
+    (match) =>
+      !existingMatchKeys.has(
+        [match.roundName, [match.home, match.away].sort().join(":")].join("|")
+      )
+  );
+
+  matches = [...matches, ...missingFutureMatches];
+
   const teamNames = [...new Set(matches.flatMap((match) => [match.home, match.away]))].sort();
 
   if (teamNames.length < 48 || matches.length < 72) {

@@ -256,6 +256,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     orderBy: { name: "asc" },
   });
 
+  const teams = await prisma.team.findMany({
+    orderBy: { name: "asc" },
+  });
+
   const members = await prisma.gameMember.findMany({
     where: {
       gameId,
@@ -353,6 +357,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     game,
     myRole,
     tournaments,
+    teams,
     availableMatches,
     availableTournamentOptions,
     members,
@@ -455,6 +460,192 @@ export async function action({ request, params }: ActionFunctionArgs) {
         slug: slugify(name),
         order: order !== null && !Number.isNaN(order) ? order : null,
         defaultWeight: !Number.isNaN(defaultWeight) ? defaultWeight : 1,
+      },
+    });
+
+    return redirect(`/games/${gameId}/admin`);
+  }
+
+  if (intent === "createScheduledMatchForGame") {
+    const tournamentId = String(formData.get("tournamentId") || "");
+    const roundIdRaw = String(formData.get("roundId") || "");
+    const roundName = String(formData.get("roundName") || "").trim();
+    const homeTeamId = String(formData.get("homeTeamId") || "");
+    const awayTeamId = String(formData.get("awayTeamId") || "");
+    const startTimeRaw = String(formData.get("startTime") || "");
+    const venue = String(formData.get("venue") || "").trim();
+    const customWeightRaw = String(formData.get("customWeight") || "");
+    const predictionClosesAtRaw = String(
+      formData.get("predictionClosesAt") || ""
+    );
+
+    if (!tournamentId || !homeTeamId || !awayTeamId || !startTimeRaw) {
+      return data(
+        { error: "Вибери турнір, дві команди і дату матчу." },
+        { status: 400 }
+      );
+    }
+
+    if (homeTeamId === awayTeamId) {
+      return data(
+        { error: "Команда не може грати сама з собою." },
+        { status: 400 }
+      );
+    }
+
+    const startTime = new Date(startTimeRaw);
+
+    if (Number.isNaN(startTime.getTime())) {
+      return data({ error: "Некоректна дата матчу." }, { status: 400 });
+    }
+
+    const tournament = await prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      select: { id: true },
+    });
+
+    if (!tournament) {
+      return data({ error: "Турнір не знайдено." }, { status: 404 });
+    }
+
+    const teamsCount = await prisma.team.count({
+      where: {
+        id: {
+          in: [homeTeamId, awayTeamId],
+        },
+      },
+    });
+
+    if (teamsCount !== 2) {
+      return data({ error: "Одна з команд не знайдена." }, { status: 404 });
+    }
+
+    let round:
+      | {
+          id: string;
+          name: string;
+          defaultWeight: number;
+        }
+      | null = null;
+
+    if (roundIdRaw) {
+      round = await prisma.round.findFirst({
+        where: {
+          id: roundIdRaw,
+          tournamentId,
+        },
+        select: {
+          id: true,
+          name: true,
+          defaultWeight: true,
+        },
+      });
+
+      if (!round) {
+        return data(
+          { error: "Етап не знайдено в цьому турнірі." },
+          { status: 404 }
+        );
+      }
+    } else if (roundName) {
+      round = await prisma.round.upsert({
+        where: {
+          tournamentId_name: {
+            tournamentId,
+            name: roundName,
+          },
+        },
+        update: {
+          slug: slugify(roundName),
+        },
+        create: {
+          tournamentId,
+          name: roundName,
+          slug: slugify(roundName),
+          defaultWeight: 1,
+        },
+        select: {
+          id: true,
+          name: true,
+          defaultWeight: true,
+        },
+      });
+    }
+
+    let match = await prisma.match.findFirst({
+      where: {
+        tournamentId,
+        startTime,
+        OR: [
+          { homeTeamId, awayTeamId },
+          { homeTeamId: awayTeamId, awayTeamId: homeTeamId },
+        ],
+      },
+      include: {
+        round: true,
+      },
+    });
+
+    if (match?.status === MATCH_STATUS.FINISHED) {
+      return data(
+        { error: "Такий матч уже завершений, для прогнозу його додавати не можна." },
+        { status: 400 }
+      );
+    }
+
+    if (!match) {
+      match = await prisma.match.create({
+        data: {
+          tournamentId,
+          roundId: round?.id ?? null,
+          homeTeamId,
+          awayTeamId,
+          venue: venue || null,
+          stageLabel: round?.name ?? null,
+          matchdayLabel: round?.name ?? null,
+          startTime,
+          status: MATCH_STATUS.SCHEDULED,
+        },
+        include: {
+          round: true,
+        },
+      });
+    }
+
+    const closesAt = predictionClosesAtRaw
+      ? new Date(predictionClosesAtRaw)
+      : new Date(
+          match.startTime.getTime() -
+            60_000 * Math.max(1, game.lockMinutesBeforeStart || 15)
+        );
+
+    await prisma.gameMatch.upsert({
+      where: {
+        gameId_matchId: {
+          gameId,
+          matchId: match.id,
+        },
+      },
+      update: {
+        customWeight: customWeightRaw
+          ? Number(customWeightRaw)
+          : match.round?.defaultWeight ?? round?.defaultWeight ?? null,
+        predictionClosesAt: closesAt,
+        includeInLeaderboard: true,
+        isLocked: new Date() >= match.startTime,
+      },
+      create: {
+        gameId,
+        matchId: match.id,
+        customWeight: customWeightRaw
+          ? Number(customWeightRaw)
+          : match.round?.defaultWeight ?? round?.defaultWeight ?? null,
+        predictionOpensAt: new Date(
+          match.startTime.getTime() - 24 * 60 * 60_000
+        ),
+        predictionClosesAt: closesAt,
+        includeInLeaderboard: true,
+        isLocked: new Date() >= match.startTime,
       },
     });
 
@@ -893,6 +1084,7 @@ export default function GameAdminPage() {
   const {
     game,
     tournaments,
+    teams,
     availableMatches,
     availableTournamentOptions,
     members,
@@ -932,6 +1124,12 @@ export default function GameAdminPage() {
 
   const activeMatches = [...liveMatches, ...upcomingMatches];
   const visibleFinishedMatches = finishedMatches.slice(0, finishedLimit);
+  const roundOptions = tournaments.flatMap((tournament) =>
+    tournament.rounds.map((round) => ({
+      ...round,
+      tournamentName: tournament.name,
+    }))
+  );
 
   return (
     <>
@@ -1027,6 +1225,133 @@ export default function GameAdminPage() {
               availableTournamentOptions={availableTournamentOptions}
               isSubmitting={isSubmitting}
             />
+
+            <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6">
+              <div className="mb-5 flex items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-100">
+                  <AdminIcon type="match" />
+                </div>
+
+                <div>
+                  <h2 className="text-2xl font-black">
+                    Створити майбутній матч для прогнозу
+                  </h2>
+                  <p className="mt-1 text-sm text-white/50">
+                    Для матчів, яких ще немає в базі: створюємо календарний матч
+                    без результату і одразу додаємо його в цю гру.
+                  </p>
+                </div>
+              </div>
+
+              <Form method="post" className="grid gap-3 lg:grid-cols-2">
+                <input
+                  type="hidden"
+                  name="intent"
+                  value="createScheduledMatchForGame"
+                />
+
+                <select
+                  name="tournamentId"
+                  required
+                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                  disabled={isSubmitting}
+                >
+                  <option value="">Турнір</option>
+                  {tournaments.map((tournament) => (
+                    <option key={tournament.id} value={tournament.id}>
+                      {tournament.name}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  name="roundId"
+                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                  disabled={isSubmitting}
+                >
+                  <option value="">Етап зі списку</option>
+                  {roundOptions.map((round) => (
+                    <option key={round.id} value={round.id}>
+                      {round.tournamentName} · {round.name}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  name="roundName"
+                  placeholder="Або новий етап: 1/4, Фінал..."
+                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                  disabled={isSubmitting}
+                />
+
+                <input
+                  name="venue"
+                  placeholder="Стадіон / місто (необовʼязково)"
+                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                  disabled={isSubmitting}
+                />
+
+                <select
+                  name="homeTeamId"
+                  required
+                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                  disabled={isSubmitting}
+                >
+                  <option value="">Команда 1</option>
+                  {teams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  name="awayTeamId"
+                  required
+                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                  disabled={isSubmitting}
+                >
+                  <option value="">Команда 2</option>
+                  {teams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  name="startTime"
+                  type="datetime-local"
+                  required
+                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                  disabled={isSubmitting}
+                />
+
+                <input
+                  name="predictionClosesAt"
+                  type="datetime-local"
+                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
+                  disabled={isSubmitting}
+                />
+
+                <input
+                  name="customWeight"
+                  type="number"
+                  min="1"
+                  placeholder="Вага прогнозу, авто якщо пусто"
+                  className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
+                  disabled={isSubmitting}
+                />
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="rounded-2xl bg-emerald-200 px-5 py-3 text-sm font-bold text-emerald-950 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isSubmitting ? "Створюю..." : "Створити і додати в предікт"}
+                </button>
+              </Form>
+            </section>
 
             <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6">
               <div className="mb-5 flex items-start gap-3">

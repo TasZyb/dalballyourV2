@@ -425,6 +425,17 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     tournaments.find((tournament) => tournament.id === requestedTournamentId) ??
     tournaments[0] ??
     null;
+  const bracketPredictions =
+    selectedTournament && !isGuestPreview
+      ? await prisma.bracketPrediction.findMany({
+          where: {
+            gameId,
+            userId: activeUser.id,
+            tournamentId: selectedTournament.id,
+          },
+          orderBy: [{ roundId: "asc" }, { slotIndex: "asc" }],
+        })
+      : [];
   const selectedMatches = selectedTournament?.matches ?? [];
   const selectedGroupMatches = selectedMatches.filter((item) =>
     isGroupMatch(item.match)
@@ -506,6 +517,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         new Date(a.match.startTime).getTime() -
         new Date(b.match.startTime).getTime()
     ),
+    bracketPredictions,
     isGuestPreview,
   });
 }
@@ -613,24 +625,195 @@ export async function action({ request, params }: ActionFunctionArgs) {
     .getAll("matchId")
     .map((value) => String(value))
     .filter(Boolean);
+  const bracketSlotKeys = formData
+    .getAll("bracketSlotKey")
+    .map((value) => String(value))
+    .filter(Boolean);
 
-  if (matchIds.length === 0) {
+  if (matchIds.length === 0 && bracketSlotKeys.length === 0) {
     return data({ error: "Немає матчів для прогнозу." }, { status: 400 });
   }
 
-  const gameMatches = await prisma.gameMatch.findMany({
-    where: {
-      gameId,
-      matchId: { in: matchIds },
-    },
-    include: {
-      match: {
-        include: {
-          round: true,
+  const gameMatches =
+    matchIds.length > 0
+      ? await prisma.gameMatch.findMany({
+          where: {
+            gameId,
+            matchId: { in: matchIds },
+          },
+          include: {
+            match: {
+              include: {
+                round: true,
+              },
+            },
+          },
+        })
+      : [];
+
+  const bracketMatchIds = [
+    ...new Set(
+      bracketSlotKeys
+        .map((slotKey) => String(formData.get(`bracketMatchId_${slotKey}`) || ""))
+        .filter(Boolean)
+    ),
+  ];
+  const bracketMatches =
+    bracketMatchIds.length > 0
+      ? await prisma.match.findMany({
+          where: {
+            id: {
+              in: bracketMatchIds,
+            },
+          },
+          include: {
+            round: true,
+          },
+        })
+      : [];
+  const bracketMatchById = new Map(
+    bracketMatches.map((match) => [match.id, match])
+  );
+
+  const bracketPredictionsToSave = [];
+  const tournamentId = String(formData.get("tournamentId") || "");
+
+  for (const slotKey of bracketSlotKeys) {
+    const predictedHome = clampScore(
+      formData.get(`bracketPredictedHome_${slotKey}`)
+    );
+    const predictedAway = clampScore(
+      formData.get(`bracketPredictedAway_${slotKey}`)
+    );
+
+    if (predictedHome === null && predictedAway === null) continue;
+
+    if (predictedHome === null || predictedAway === null) {
+      return data(
+        { error: "Для кожного брекет-прогнозу треба вказати обидва рахунки." },
+        { status: 400 }
+      );
+    }
+
+    if (predictedHome === predictedAway) {
+      return data(
+        { error: "У брекеті треба вибрати переможця, нічия не може пройти далі." },
+        { status: 400 }
+      );
+    }
+
+    const matchId = String(formData.get(`bracketMatchId_${slotKey}`) || "");
+    const match = matchId ? bracketMatchById.get(matchId) : null;
+    const homeTeamId = String(formData.get(`bracketHomeTeamId_${slotKey}`) || "");
+    const awayTeamId = String(formData.get(`bracketAwayTeamId_${slotKey}`) || "");
+    const winnerTeamId = String(
+      formData.get(`bracketWinnerTeamId_${slotKey}`) || ""
+    );
+    const roundId = String(formData.get(`bracketRoundId_${slotKey}`) || "");
+    const roundTitle = String(formData.get(`bracketRoundTitle_${slotKey}`) || "");
+    const slotIndex = Number(formData.get(`bracketSlotIndex_${slotKey}`) || 0);
+
+    if (!tournamentId || !roundId || !roundTitle || !winnerTeamId) {
+      continue;
+    }
+
+    if (
+      match &&
+      isPredictionLocked({
+        matchStatus: match.status,
+        startTime: match.startTime,
+        gameMatchIsLocked: match.status === "FINISHED",
+        predictionClosesAt: null,
+        gameLockMinutesBeforeStart: game.lockMinutesBeforeStart,
+      })
+    ) {
+      continue;
+    }
+
+    const weightUsed =
+      match?.round?.defaultWeight ?? game.defaultRoundWeight ?? 1;
+    const isFinished =
+      match?.status === "FINISHED" &&
+      match.homeScore !== null &&
+      match.awayScore !== null;
+    const actualHomeScore =
+      isFinished && match?.homeTeamId === homeTeamId
+        ? match.homeScore
+        : isFinished && match?.awayTeamId === homeTeamId
+        ? match.awayScore
+        : null;
+    const actualAwayScore =
+      isFinished && match?.homeTeamId === awayTeamId
+        ? match.homeScore
+        : isFinished && match?.awayTeamId === awayTeamId
+        ? match.awayScore
+        : null;
+    const wasExact =
+      actualHomeScore !== null &&
+      actualAwayScore !== null &&
+      predictedHome === actualHomeScore &&
+      predictedAway === actualAwayScore;
+    const wasOutcomeOnly =
+      actualHomeScore !== null &&
+      actualAwayScore !== null &&
+      !wasExact &&
+      getOutcome(predictedHome, predictedAway) ===
+        getOutcome(actualHomeScore, actualAwayScore);
+    const wasWrong = Boolean(isFinished) && !wasExact && !wasOutcomeOnly;
+    const pointsAwarded = wasExact ? 3 : wasOutcomeOnly ? 1 : 0;
+
+    bracketPredictionsToSave.push({
+      slotKey,
+      roundId,
+      roundTitle,
+      slotIndex: Number.isNaN(slotIndex) ? 0 : slotIndex,
+      tournamentId,
+      matchId: match?.id ?? null,
+      homeTeamId: homeTeamId || null,
+      awayTeamId: awayTeamId || null,
+      winnerTeamId,
+      predictedHomeScore: predictedHome,
+      predictedAwayScore: predictedAway,
+      weightUsed,
+      pointsAwarded,
+      weightedPointsAwarded: pointsAwarded * weightUsed,
+      wasExact,
+      wasOutcomeOnly,
+      wasWrong,
+      scoreCalculatedAt: isFinished ? new Date() : null,
+    });
+  }
+
+  if (!currentUser && isGuestPreview) {
+    return data({
+      ok: true,
+      message: "Guest-прогнози прийнято для проби. У базу вони не записуються.",
+    });
+  }
+
+  if (bracketPredictionsToSave.length > 0) {
+    const existingBracketPredictions = await prisma.bracketPrediction.findMany({
+      where: {
+        userId: currentUser!.id,
+        gameId,
+        tournamentId,
+        slotKey: {
+          in: bracketPredictionsToSave.map((prediction) => prediction.slotKey),
         },
       },
-    },
-  });
+      select: { slotKey: true },
+    });
+
+    if (
+      existingBracketPredictions.length > 0 &&
+      !game.allowMemberPredictionsEdit
+    ) {
+      return data(
+        { error: "У цій грі редагування брекет-прогнозів вимкнене." },
+        { status: 400 }
+      );
+    }
+  }
 
   const predictionsToSave = [];
 
@@ -675,28 +858,26 @@ export async function action({ request, params }: ActionFunctionArgs) {
     });
   }
 
-  if (predictionsToSave.length === 0) {
+  if (predictionsToSave.length === 0 && bracketPredictionsToSave.length === 0) {
     return data(
       { error: "Немає відкритих матчів плейофу із заповненим прогнозом." },
       { status: 400 }
     );
   }
 
-  if (!currentUser && isGuestPreview) {
-    return data({
-      ok: true,
-      message: "Guest-прогнози прийнято для проби. У базу вони не записуються.",
-    });
-  }
-
-  const existingPredictions = await prisma.prediction.findMany({
-    where: {
-      userId: currentUser!.id,
-      gameId,
-      matchId: { in: predictionsToSave.map((prediction) => prediction.matchId) },
-    },
-    select: { matchId: true },
-  });
+  const existingPredictions =
+    predictionsToSave.length > 0
+      ? await prisma.prediction.findMany({
+          where: {
+            userId: currentUser!.id,
+            gameId,
+            matchId: {
+              in: predictionsToSave.map((prediction) => prediction.matchId),
+            },
+          },
+          select: { matchId: true },
+        })
+      : [];
 
   if (existingPredictions.length > 0 && !game.allowMemberPredictionsEdit) {
     return data(
@@ -738,7 +919,29 @@ export async function action({ request, params }: ActionFunctionArgs) {
     });
   }
 
-  const tournamentId = String(formData.get("tournamentId") || "");
+  for (const prediction of bracketPredictionsToSave) {
+    await prisma.bracketPrediction.upsert({
+      where: {
+        userId_gameId_tournamentId_slotKey: {
+          userId: currentUser!.id,
+          gameId,
+          tournamentId: prediction.tournamentId,
+          slotKey: prediction.slotKey,
+        },
+      },
+      create: {
+        userId: currentUser!.id,
+        gameId,
+        ...prediction,
+        submittedAt: new Date(),
+      },
+      update: {
+        ...prediction,
+        updatedAt: new Date(),
+      },
+    });
+  }
+
   return redirect(
     `/games/${gameId}/bracket${
       tournamentId ? `?tournament=${tournamentId}&view=knockout` : ""
@@ -746,14 +949,20 @@ export async function action({ request, params }: ActionFunctionArgs) {
   );
 }
 
-function TeamMark({ team }: { team: any }) {
+function TeamMark({ team, compact = false }: { team: any; compact?: boolean }) {
   if (!team) {
     return (
-      <div className="flex min-w-0 items-center gap-2 text-white/35">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed border-white/15 bg-white/[0.04]">
+      <div className={`flex min-w-0 items-center ${compact ? "gap-1.5" : "gap-2"} text-white/35`}>
+        <div
+          className={`flex shrink-0 items-center justify-center rounded-full border border-dashed border-white/15 bg-white/[0.04] ${
+            compact ? "h-5 w-5" : "h-8 w-8"
+          }`}
+        >
           <span className="text-[10px] font-black">?</span>
         </div>
-        <span className="truncate text-sm font-black">Очікується</span>
+        <span className={compact ? "truncate text-[10px] font-black" : "truncate text-sm font-black"}>
+          Очікується
+        </span>
       </div>
     );
   }
@@ -763,19 +972,29 @@ function TeamMark({ team }: { team: any }) {
   const displayName = getTeamDisplayName(team);
 
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/10">
+    <div className={`flex min-w-0 items-center ${compact ? "gap-1.5" : "gap-2"}`}>
+      <div
+        className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/10 ${
+          compact ? "h-5 w-5" : "h-8 w-8"
+        }`}
+      >
         {logo ? (
-          <img src={logo} alt={displayName} className="h-5 w-5 object-contain" />
+          <img
+            src={logo}
+            alt={displayName}
+            className={compact ? "h-3.5 w-3.5 object-contain" : "h-5 w-5 object-contain"}
+          />
         ) : flag ? (
-          <span className="text-lg leading-none">{flag}</span>
+          <span className={compact ? "text-xs leading-none" : "text-lg leading-none"}>
+            {flag}
+          </span>
         ) : (
           <span className="text-[9px] font-black uppercase text-white/65">
             {displayName.slice(0, 3)}
           </span>
         )}
       </div>
-      <span className="truncate text-sm font-black text-white">
+      <span className={compact ? "truncate text-[10px] font-black text-white" : "truncate text-sm font-black text-white"}>
         {displayName}
       </span>
     </div>
@@ -1295,11 +1514,13 @@ function BracketScoreInput({
   onChange,
   name,
   disabled,
+  compact = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   name?: string;
   disabled?: boolean;
+  compact?: boolean;
 }) {
   return (
     <input
@@ -1310,7 +1531,10 @@ function BracketScoreInput({
       value={value}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
-      className="h-9 w-11 rounded-xl border border-white/10 bg-black/25 text-center text-sm font-black text-white outline-none focus:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-45"
+      className={[
+        compact ? "h-6 w-7 rounded-md text-[10px]" : "h-9 w-11 rounded-xl text-sm",
+        "border border-white/10 bg-black/25 text-center font-black text-white outline-none focus:border-emerald-300/40 disabled:cursor-not-allowed disabled:opacity-70",
+      ].join(" ")}
       inputMode="numeric"
       aria-label={name}
     />
@@ -1359,17 +1583,17 @@ function BracketMatchCard({
   return (
     <div
       className={[
-        "relative rounded-[1.15rem] border bg-black/25",
-        compact ? "p-2" : "p-3",
+        "relative border bg-black/25",
+        compact ? "rounded-lg p-1" : "rounded-[1.15rem] p-3",
         winner ? "border-emerald-300/25" : "border-white/10",
       ].join(" ")}
     >
-      <div className={compact ? "mb-2 flex items-center justify-between gap-2" : "mb-3 flex items-center justify-between gap-3"}>
-        <span className="truncate text-[11px] font-bold text-white/40">
+      <div className={compact ? "mb-1 flex items-center justify-between gap-1.5" : "mb-3 flex items-center justify-between gap-3"}>
+        <span className={compact ? "truncate text-[9px] font-bold text-white/35" : "truncate text-[11px] font-bold text-white/40"}>
           {match ? formatDate(match.startTime) : "Очікує пару"}
         </span>
         <span
-          className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] ${
+          className={`${compact ? "rounded-md px-1.5 py-0.5 text-[8px]" : "rounded-full px-2 py-1 text-[9px]"} font-black uppercase tracking-[0.12em] ${
             isFinished
               ? "bg-white/10 text-white/45"
               : winner
@@ -1381,29 +1605,35 @@ function BracketMatchCard({
         </span>
       </div>
 
-      <div className="space-y-2">
+      <div className={compact ? "space-y-0.5" : "space-y-2"}>
         <div
-          className={`grid grid-cols-[1fr_auto] items-center gap-2 rounded-xl px-2 py-1.5 ${
+          className={`grid grid-cols-[1fr_auto] items-center gap-1.5 ${
+            compact ? "rounded-md px-1 py-0.5" : "rounded-xl px-2 py-1.5"
+          } ${
             winner?.id === slot.homeTeam?.id ? "bg-emerald-500/10" : "bg-white/[0.03]"
           }`}
         >
-          <TeamMark team={slot.homeTeam} />
+          <TeamMark team={slot.homeTeam} compact={compact} />
           <BracketScoreInput
             value={homeScoreValue}
             disabled={disabled || isFinished}
+            compact={compact}
             onChange={(home) => onQuickScoreChange({ ...quickScore, home })}
           />
         </div>
 
         <div
-          className={`grid grid-cols-[1fr_auto] items-center gap-2 rounded-xl px-2 py-1.5 ${
+          className={`grid grid-cols-[1fr_auto] items-center gap-1.5 ${
+            compact ? "rounded-md px-1 py-0.5" : "rounded-xl px-2 py-1.5"
+          } ${
             winner?.id === slot.awayTeam?.id ? "bg-emerald-500/10" : "bg-white/[0.03]"
           }`}
         >
-          <TeamMark team={slot.awayTeam} />
+          <TeamMark team={slot.awayTeam} compact={compact} />
           <BracketScoreInput
             value={awayScoreValue}
             disabled={disabled || isFinished}
+            compact={compact}
             onChange={(away) => onQuickScoreChange({ ...quickScore, away })}
           />
         </div>
@@ -1432,9 +1662,9 @@ function splitRoundSlots(column: any, side: "left" | "right") {
 
 function BracketColumnHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div className="mb-3 text-center">
-      <div className="text-xl font-black text-cyan-200">{title}</div>
-      <div className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-white/55">
+    <div className="mb-2 text-center">
+      <div className="text-lg font-black text-cyan-200">{title}</div>
+      <div className="mt-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-white/55">
         {subtitle}
       </div>
     </div>
@@ -1459,12 +1689,12 @@ function BracketSideColumn({
   const slots = splitRoundSlots(column, side);
 
   return (
-    <section className="flex min-h-[900px] flex-col">
+    <section className="flex min-h-[600px] flex-col">
       <BracketColumnHeader title={column.title} subtitle={column.subtitle} />
 
       <div
         className={[
-          "relative flex flex-1 flex-col justify-around gap-3",
+          "relative flex flex-1 flex-col justify-around gap-1.5",
           reverse ? "order-last" : "",
         ].join(" ")}
       >
@@ -1512,12 +1742,12 @@ function FinalColumn({
   const winner = finalSlot ? getSlotWinner(finalSlot, quickScores) : null;
 
   return (
-    <section className="flex min-h-[900px] flex-col items-center justify-center">
-      <div className="mb-4 text-center">
-        <div className="text-lg font-black uppercase tracking-[0.14em] text-cyan-200">
+    <section className="flex min-h-[600px] flex-col items-center justify-center">
+      <div className="mb-3 text-center">
+        <div className="text-sm font-black uppercase tracking-[0.14em] text-cyan-200">
           Final
         </div>
-        <div className="mt-2 text-3xl">🏆</div>
+        <div className="mt-1 text-2xl">🏆</div>
       </div>
 
       {finalSlot ? (
@@ -1536,12 +1766,167 @@ function FinalColumn({
         </div>
       ) : null}
 
-      <div className="mt-4 min-h-[70px] w-full rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-center">
+      <div className="mt-3 min-h-[56px] w-full rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-3 py-2 text-center">
         <div className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100/60">
           Champion
         </div>
-        <div className="mt-1 text-lg font-black text-cyan-50">
+        <div className="mt-1 truncate text-sm font-black text-cyan-50">
           {winner ? getTeamDisplayName(winner) : "Очікується"}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MobileTeamFlag({ team, winner }: { team: any; winner: boolean }) {
+  const flag = getTeamFlagEmoji(team);
+  const label = getTeamDisplayName(team);
+
+  return (
+    <div
+      className={[
+        "flex h-8 w-8 items-center justify-center rounded-full border text-base",
+        winner
+          ? "border-emerald-300/35 bg-emerald-400/15"
+          : "border-white/10 bg-white/[0.06]",
+      ].join(" ")}
+      aria-label={label}
+      title={label}
+    >
+      {team ? (
+        flag ? (
+          <span className="leading-none">{flag}</span>
+        ) : (
+          <span className="text-[8px] font-black uppercase text-white/70">
+            {label.slice(0, 3)}
+          </span>
+        )
+      ) : (
+        <span className="text-xs font-black text-white/35">?</span>
+      )}
+    </div>
+  );
+}
+
+function MobileBracketTile({
+  slot,
+  winner,
+  onOpen,
+}: {
+  slot: any;
+  winner: any;
+  onOpen: () => void;
+}) {
+  const match = slot.realItem?.match;
+  const finishedHomeScore = getFinishedTeamScore(match, slot.homeTeam);
+  const finishedAwayScore = getFinishedTeamScore(match, slot.awayTeam);
+  const hasResult = finishedHomeScore !== null && finishedAwayScore !== null;
+  const isFinished = match?.status === "FINISHED";
+  const homeWinner = winner?.id === slot.homeTeam?.id;
+  const awayWinner = winner?.id === slot.awayTeam?.id;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={[
+        "group rounded-xl border bg-black/25 px-1.5 py-1.5 text-left transition active:scale-[0.98]",
+        winner ? "border-emerald-300/25" : "border-white/10",
+      ].join(" ")}
+    >
+      <div className="flex items-center justify-center gap-1">
+        <MobileTeamFlag team={slot.homeTeam} winner={homeWinner} />
+
+        <div className="w-8 shrink-0 text-center">
+          <div className="text-[7px] font-black uppercase tracking-[0.1em] text-white/35">
+            {isFinished ? "FT" : winner ? "Далі" : "Pick"}
+          </div>
+          <div className="mt-0.5 text-[11px] font-black text-white">
+            {hasResult ? `${finishedHomeScore}:${finishedAwayScore}` : "vs"}
+          </div>
+        </div>
+
+        <MobileTeamFlag team={slot.awayTeam} winner={awayWinner} />
+      </div>
+    </button>
+  );
+}
+
+function MobileBracketColumn({
+  column,
+  side,
+  quickScores,
+  onOpenSlot,
+}: {
+  column: any;
+  side: "left" | "right";
+  quickScores: Record<string, { home: string; away: string }>;
+  onOpenSlot: (slotId: string) => void;
+}) {
+  const slots = splitRoundSlots(column, side);
+
+  return (
+    <section className="flex min-h-[455px] flex-col">
+      <div className="mb-2 text-center">
+        <div className="text-xs font-black text-cyan-200">{column.title}</div>
+        <div className="mt-0.5 text-[7px] font-black uppercase tracking-[0.1em] text-white/45">
+          {column.subtitle}
+        </div>
+      </div>
+
+      <div className="flex flex-1 flex-col justify-around gap-1">
+        {slots.map((slot: any) => {
+          const winner = getSlotWinner(slot, quickScores);
+
+          return (
+            <MobileBracketTile
+              key={slot.id}
+              slot={slot}
+              winner={winner}
+              onOpen={() => onOpenSlot(slot.id)}
+            />
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function MobileFinalColumn({
+  finalColumn,
+  quickScores,
+  onOpenSlot,
+}: {
+  finalColumn: any;
+  quickScores: Record<string, { home: string; away: string }>;
+  onOpenSlot: (slotId: string) => void;
+}) {
+  const finalSlot = finalColumn?.slots?.[0] ?? null;
+  const winner = finalSlot ? getSlotWinner(finalSlot, quickScores) : null;
+
+  return (
+    <section className="flex min-h-[455px] flex-col items-center justify-center">
+      <div className="mb-2 text-center">
+        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
+          Final
+        </div>
+        <div className="mt-1 text-xl">🏆</div>
+      </div>
+
+      {finalSlot ? (
+        <MobileBracketTile
+          slot={finalSlot}
+          winner={winner}
+          onOpen={() => onOpenSlot(finalSlot.id)}
+        />
+      ) : null}
+
+      <div className="mt-3 w-full rounded-xl border border-cyan-300/20 bg-cyan-300/10 px-2 py-2 text-center">
+        <div className="text-[8px] font-black uppercase tracking-[0.12em] text-cyan-100/55">
+          Champion
+        </div>
+        <div className="mt-1 truncate text-[11px] font-black text-cyan-50">
+          {winner ? getTeamDisplayName(winner) : "TBD"}
         </div>
       </div>
     </section>
@@ -1568,19 +1953,19 @@ function DesktopBracket({
   const finalColumn = getColumnById(bracketColumns, "final");
 
   return (
-    <div className="hidden overflow-x-auto rounded-[2rem] border border-cyan-300/15 bg-[#03142a] p-5 shadow-2xl shadow-black/30 xl:block">
-      <div className="min-w-[1720px]">
-        <div className="mb-5 flex items-center justify-center gap-4 text-center">
-          <div className="text-4xl">🏆</div>
+    <div className="hidden overflow-x-auto rounded-[1.5rem] border border-cyan-300/15 bg-[#03142a] p-3 shadow-2xl shadow-black/30 xl:block">
+      <div className="min-w-[1420px]">
+        <div className="mb-3 flex items-center justify-center gap-3 text-center">
+          <div className="text-2xl">🏆</div>
           <div>
-            <h2 className="text-4xl font-black tracking-tight text-white">
+            <h2 className="text-2xl font-black tracking-tight text-white">
               {tournament.name}
             </h2>
-            <div className="mx-auto mt-2 h-px w-72 bg-gradient-to-r from-transparent via-cyan-300 to-transparent" />
+            <div className="mx-auto mt-1.5 h-px w-52 bg-gradient-to-r from-transparent via-cyan-300 to-transparent" />
           </div>
         </div>
 
-        <div className="grid grid-cols-[1.25fr_1.05fr_0.95fr_0.72fr_0.95fr_0.72fr_0.95fr_1.05fr_1.25fr] gap-4">
+        <div className="grid grid-cols-[1.08fr_0.95fr_0.82fr_0.62fr_0.78fr_0.62fr_0.82fr_0.95fr_1.08fr] gap-2.5">
           {round32 ? (
             <BracketSideColumn
               column={round32}
@@ -1669,69 +2054,172 @@ function MobileBracket({
     SetStateAction<Record<string, { home: string; away: string }>>
   >;
 }) {
-  const [activeRoundId, setActiveRoundId] = useState(
-    bracketColumns[0]?.id ?? "round32"
-  );
-  const activeColumn =
-    bracketColumns.find((column) => column.id === activeRoundId) ??
-    bracketColumns[0];
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
+  const selectedSlot =
+    bracketColumns
+      .flatMap((column) => column.slots)
+      .find((slot: any) => slot.id === selectedSlotId) ?? null;
+  const round32 = getColumnById(bracketColumns, "round32");
+  const round16 = getColumnById(bracketColumns, "round16");
+  const quarter = getColumnById(bracketColumns, "quarter");
+  const semi = getColumnById(bracketColumns, "semi");
+  const finalColumn = getColumnById(bracketColumns, "final");
 
   useEffect(() => {
-    if (!bracketColumns.some((column) => column.id === activeRoundId)) {
-      setActiveRoundId(bracketColumns[0]?.id ?? "round32");
+    if (
+      selectedSlotId &&
+      !bracketColumns.some((column) =>
+        column.slots.some((slot: any) => slot.id === selectedSlotId)
+      )
+    ) {
+      setSelectedSlotId(null);
     }
-  }, [activeRoundId, bracketColumns]);
+  }, [bracketColumns, selectedSlotId]);
 
-  if (!activeColumn) return null;
+  if (bracketColumns.length === 0) return null;
 
   return (
-    <div className="space-y-4 xl:hidden">
-      <div className="flex gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.04] p-1">
-        {bracketColumns.map((column) => (
-          <button
-            key={column.id}
-            type="button"
-            onClick={() => setActiveRoundId(column.id)}
-            className={`shrink-0 rounded-xl px-4 py-2 text-sm font-black transition ${
-              activeColumn.id === column.id
-                ? "bg-white text-black"
-                : "text-white/55 hover:bg-white/10 hover:text-white"
-            }`}
-          >
-            {column.title}
-          </button>
-        ))}
+    <div className="space-y-3 xl:hidden">
+      <div className="rounded-[1.5rem] border border-cyan-300/15 bg-[#03142a] p-2 shadow-2xl shadow-black/30">
+        <div className="mb-2 flex items-center justify-center gap-2 text-center">
+          <div className="text-lg">🏆</div>
+          <div className="text-sm font-black text-white">Сітка плейоф</div>
+        </div>
+
+        <div className="overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="grid min-w-[860px] grid-cols-[1fr_0.9fr_0.74fr_0.56fr_0.68fr_0.56fr_0.74fr_0.9fr_1fr] gap-1.5">
+            {round32 ? (
+              <MobileBracketColumn
+                column={round32}
+                side="left"
+                quickScores={quickScores}
+                onOpenSlot={setSelectedSlotId}
+              />
+            ) : null}
+            {round16 ? (
+              <MobileBracketColumn
+                column={round16}
+                side="left"
+                quickScores={quickScores}
+                onOpenSlot={setSelectedSlotId}
+              />
+            ) : null}
+            {quarter ? (
+              <MobileBracketColumn
+                column={quarter}
+                side="left"
+                quickScores={quickScores}
+                onOpenSlot={setSelectedSlotId}
+              />
+            ) : null}
+            {semi ? (
+              <MobileBracketColumn
+                column={semi}
+                side="left"
+                quickScores={quickScores}
+                onOpenSlot={setSelectedSlotId}
+              />
+            ) : null}
+
+            <MobileFinalColumn
+              finalColumn={finalColumn}
+              quickScores={quickScores}
+              onOpenSlot={setSelectedSlotId}
+            />
+
+            {semi ? (
+              <MobileBracketColumn
+                column={semi}
+                side="right"
+                quickScores={quickScores}
+                onOpenSlot={setSelectedSlotId}
+              />
+            ) : null}
+            {quarter ? (
+              <MobileBracketColumn
+                column={quarter}
+                side="right"
+                quickScores={quickScores}
+                onOpenSlot={setSelectedSlotId}
+              />
+            ) : null}
+            {round16 ? (
+              <MobileBracketColumn
+                column={round16}
+                side="right"
+                quickScores={quickScores}
+                onOpenSlot={setSelectedSlotId}
+              />
+            ) : null}
+            {round32 ? (
+              <MobileBracketColumn
+                column={round32}
+                side="right"
+                quickScores={quickScores}
+                onOpenSlot={setSelectedSlotId}
+              />
+            ) : null}
+          </div>
+        </div>
       </div>
 
-      <section className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-3">
-        <BracketColumnHeader
-          title={activeColumn.title}
-          subtitle={activeColumn.subtitle}
-        />
+      {selectedSlot ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/70 p-3 backdrop-blur-sm sm:items-center sm:justify-center">
+          <button
+            type="button"
+            aria-label="Закрити деталі матчу"
+            className="absolute inset-0"
+            onClick={() => setSelectedSlotId(null)}
+          />
 
-        <div className="grid gap-3">
-          {activeColumn.slots.map((slot: any) => {
-            const key = getMatchKey(slot);
-            const quickScore = quickScores[key] ?? { home: "", away: "" };
-            const winner = getSlotWinner(slot, quickScores);
+          <div className="relative w-full max-w-md rounded-[1.5rem] border border-white/10 bg-[#061426] p-4 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.16em] text-cyan-200/70">
+                  {selectedSlot.realItem?.match
+                    ? formatDate(selectedSlot.realItem.match.startTime)
+                    : "Очікує пару"}
+                </div>
+                <h3 className="mt-1 text-lg font-black text-white">
+                  Деталі матчу
+                </h3>
+              </div>
 
-            return (
-              <BracketMatchCard
-                key={slot.id}
-                slot={slot}
-                quickScore={quickScore}
-                winner={winner}
-                onQuickScoreChange={(score) =>
-                  setQuickScores((current) => ({
-                    ...current,
-                    [key]: score,
-                  }))
-                }
-              />
-            );
-          })}
+              <button
+                type="button"
+                onClick={() => setSelectedSlotId(null)}
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/10 text-xl font-black text-white"
+              >
+                ×
+              </button>
+            </div>
+
+            {(() => {
+              const key = getMatchKey(selectedSlot);
+              const quickScore = quickScores[key] ?? { home: "", away: "" };
+              const winner = getSlotWinner(selectedSlot, quickScores);
+
+              return (
+                <BracketMatchCard
+                  slot={selectedSlot}
+                  quickScore={quickScore}
+                  winner={winner}
+                  onQuickScoreChange={(score) =>
+                    setQuickScores((current) => ({
+                      ...current,
+                      [key]: score,
+                    }))
+                  }
+                />
+              );
+            })()}
+
+            <p className="mt-3 text-center text-xs text-white/40">
+              Збереження прогнозів відбудеться через нижню кнопку сторінки.
+            </p>
+          </div>
         </div>
-      </section>
+      ) : null}
     </div>
   );
 }
@@ -1740,11 +2228,13 @@ function KnockoutBracket({
   game,
   tournament,
   rounds,
+  bracketPredictions,
   isBusy,
 }: {
   game: any;
   tournament: any;
   rounds: any[];
+  bracketPredictions: any[];
   isBusy: boolean;
 }) {
   const initialQuickScores = useMemo(() => {
@@ -1769,8 +2259,22 @@ function KnockoutBracket({
       }
     }
 
+    for (const prediction of bracketPredictions) {
+      if (
+        prediction.predictedHomeScore === null ||
+        prediction.predictedAwayScore === null
+      ) {
+        continue;
+      }
+
+      scores[prediction.slotKey] = {
+        home: String(prediction.predictedHomeScore),
+        away: String(prediction.predictedAwayScore),
+      };
+    }
+
     return scores;
-  }, [rounds]);
+  }, [rounds, bracketPredictions]);
   const [quickScores, setQuickScores] =
     useState<Record<string, { home: string; away: string }>>(initialQuickScores);
 
@@ -1797,6 +2301,33 @@ function KnockoutBracket({
         };
       })
       .filter((entry: any) => entry.home !== null && entry.away !== null)
+  );
+  const bracketPredictionEntries = bracketColumns.flatMap((column: any) =>
+    column.slots
+      .map((slot: any, index: number) => {
+        const key = getMatchKey(slot);
+        const score = quickScores[key] ?? { home: "", away: "" };
+        const home = getScoreValue(score.home);
+        const away = getScoreValue(score.away);
+        const winner = getSlotWinner(slot, quickScores);
+
+        return {
+          slot,
+          column,
+          index,
+          key,
+          home,
+          away,
+          winner,
+        };
+      })
+      .filter(
+        (entry: any) =>
+          entry.home !== null &&
+          entry.away !== null &&
+          entry.home !== entry.away &&
+          entry.winner?.id
+      )
   );
 
   if (rounds.length === 0) {
@@ -1831,6 +2362,56 @@ function KnockoutBracket({
           />
         </div>
       ))}
+      {bracketPredictionEntries.map((entry: any) => (
+        <div key={`${entry.column.id}:${entry.key}`} className="hidden">
+          <input type="hidden" name="bracketSlotKey" value={entry.key} />
+          <input
+            type="hidden"
+            name={`bracketRoundId_${entry.key}`}
+            value={entry.column.id}
+          />
+          <input
+            type="hidden"
+            name={`bracketRoundTitle_${entry.key}`}
+            value={entry.column.title}
+          />
+          <input
+            type="hidden"
+            name={`bracketSlotIndex_${entry.key}`}
+            value={entry.index}
+          />
+          <input
+            type="hidden"
+            name={`bracketMatchId_${entry.key}`}
+            value={entry.slot.realItem?.match.id ?? ""}
+          />
+          <input
+            type="hidden"
+            name={`bracketHomeTeamId_${entry.key}`}
+            value={entry.slot.homeTeam?.id ?? ""}
+          />
+          <input
+            type="hidden"
+            name={`bracketAwayTeamId_${entry.key}`}
+            value={entry.slot.awayTeam?.id ?? ""}
+          />
+          <input
+            type="hidden"
+            name={`bracketWinnerTeamId_${entry.key}`}
+            value={entry.winner.id}
+          />
+          <input
+            type="hidden"
+            name={`bracketPredictedHome_${entry.key}`}
+            value={entry.home}
+          />
+          <input
+            type="hidden"
+            name={`bracketPredictedAway_${entry.key}`}
+            value={entry.away}
+          />
+        </div>
+      ))}
 
       <DesktopBracket
         tournament={tournament}
@@ -1850,13 +2431,17 @@ function KnockoutBracket({
           <div className="text-sm font-black text-[var(--text)]">{game.name}</div>
           <div className="text-xs text-[var(--text-soft)]">
             Швидкий прогноз одразу рухає команду далі в сітці. Збереження
-            записує прогнози тільки для реальних відкритих матчів.
+            записує реальні матчі і персональний шлях команд у брекеті.
           </div>
         </div>
 
         <button
           type="submit"
-          disabled={isBusy || persistablePredictions.length === 0}
+          disabled={
+            isBusy ||
+            (persistablePredictions.length === 0 &&
+              bracketPredictionEntries.length === 0)
+          }
           className="inline-flex items-center justify-center rounded-2xl bg-white px-5 py-3 text-sm font-black text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isBusy ? "Збереження..." : "Зберегти прогнози сітки"}
@@ -1874,6 +2459,7 @@ export default function GameBracketPage() {
     activeView,
     groups,
     knockoutRounds,
+    bracketPredictions,
     tableMatches,
   } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>() as
@@ -1941,6 +2527,7 @@ export default function GameBracketPage() {
             game={game}
             tournament={selectedTournament}
             rounds={knockoutRounds}
+            bracketPredictions={bracketPredictions}
             isBusy={isBusy}
           />
         ) : (

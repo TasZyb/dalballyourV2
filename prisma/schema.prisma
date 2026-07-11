@@ -25,7 +25,7 @@ model User {
 
   wallet             UserWallet?
   coinTransactions   CoinTransaction[]
-  createdCoinActions CoinTransaction[] @relation("CoinGrantedBy")
+  createdCoinActions CoinTransaction[]  @relation("CoinGrantedBy")
   dailyQuizAttempts  DailyQuizAttempt[]
   predictionBoosts   PredictionBoost[]
 
@@ -35,19 +35,20 @@ model User {
 
   favoriteTeam Team? @relation("FavoriteTeam", fields: [favoriteTeamId], references: [id], onDelete: SetNull)
 
-  accounts    Account[]
-  sessions    Session[]
-  predictions Prediction[]
-  memberships GameMember[]
-  ownedGames  Game[]       @relation("GameOwner")
-  sentInvites GameInvite[] @relation("InviteCreatedBy")
+  accounts           Account[]
+  sessions           Session[]
+  predictions        Prediction[]
+  bracketPredictions BracketPrediction[]
+  memberships        GameMember[]
+  ownedGames         Game[]              @relation("GameOwner")
+  sentInvites        GameInvite[]        @relation("InviteCreatedBy")
 
-  chatMessages  ChatMessage[]
-  chatReactions ChatReaction[]
-  playerCards   GamePlayerCard[]
-  courseAccesses CourseAccess[]
-  courseOrders   CourseOrder[]
-  authoredCourses Course[] @relation("CourseTeacher")
+  chatMessages    ChatMessage[]
+  chatReactions   ChatReaction[]
+  playerCards     GamePlayerCard[]
+  courseAccesses  CourseAccess[]
+  courseOrders    CourseOrder[]
+  authoredCourses Course[]         @relation("CourseTeacher")
 
   @@index([email])
   @@index([displayName])
@@ -108,14 +109,17 @@ model Team {
   awayMatches    Match[] @relation("AwayTeamMatches")
   favoredByUsers User[]  @relation("FavoriteTeam")
 
-  profile       TeamProfile?
-  players       Player[]
-  formSnapshots TeamFormSnapshot[]
-  lineups       MatchLineup[]
-  games         Game[]
-  playerCards   GamePlayerCard[] @relation("GamePlayerCardClub")
-  matchFacts    MatchFactEvent[]
-  quizQuestions DailyQuizQuestion[]
+  profile                  TeamProfile?
+  players                  Player[]
+  formSnapshots            TeamFormSnapshot[]
+  lineups                  MatchLineup[]
+  games                    Game[]
+  playerCards              GamePlayerCard[]    @relation("GamePlayerCardClub")
+  matchFacts               MatchFactEvent[]
+  quizQuestions            DailyQuizQuestion[]
+  bracketHomePredictions   BracketPrediction[] @relation("BracketPredictionHomeTeam")
+  bracketAwayPredictions   BracketPrediction[] @relation("BracketPredictionAwayTeam")
+  bracketWinnerPredictions BracketPrediction[] @relation("BracketPredictionWinnerTeam")
 
   @@unique([name])
   @@index([shortName])
@@ -233,12 +237,13 @@ model Tournament {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  season      Season?              @relation(fields: [seasonId], references: [id], onDelete: SetNull)
-  rounds      Round[]
-  matches     Match[]
-  games       Game[]
-  teamForms   TeamFormSnapshot[]
-  playerStats PlayerStatSnapshot[]
+  season             Season?              @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  rounds             Round[]
+  matches            Match[]
+  games              Game[]
+  teamForms          TeamFormSnapshot[]
+  playerStats        PlayerStatSnapshot[]
+  bracketPredictions BracketPrediction[]
 
   @@unique([name])
   @@unique([slug])
@@ -310,12 +315,13 @@ model Match {
   homeTeam   Team       @relation("HomeTeamMatches", fields: [homeTeamId], references: [id])
   awayTeam   Team       @relation("AwayTeamMatches", fields: [awayTeamId], references: [id])
 
-  predictions      Prediction[]
-  gameMatches      GameMatch[]
-  coinTransactions CoinTransaction[]
-  lineups          MatchLineup[]
-  facts            MatchFactEvent[]
-  quizQuestions    DailyQuizQuestion[]
+  predictions        Prediction[]
+  bracketPredictions BracketPrediction[]
+  gameMatches        GameMatch[]
+  coinTransactions   CoinTransaction[]
+  lineups            MatchLineup[]
+  facts              MatchFactEvent[]
+  quizQuestions      DailyQuizQuestion[]
 
   chats        Chat[]
   chatMessages ChatMessage[]
@@ -479,12 +485,13 @@ model Game {
   owner            User        @relation("GameOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   linkedTournament Tournament? @relation(fields: [linkedTournamentId], references: [id], onDelete: SetNull)
 
-  members          GameMember[]
-  invites          GameInvite[]
-  gameMatches      GameMatch[]
-  predictions      Prediction[]
-  coinTransactions CoinTransaction[]
-  playerCards      GamePlayerCard[]
+  members            GameMember[]
+  invites            GameInvite[]
+  gameMatches        GameMatch[]
+  predictions        Prediction[]
+  bracketPredictions BracketPrediction[]
+  coinTransactions   CoinTransaction[]
+  playerCards        GamePlayerCard[]
   dailyQuizQuestions DailyQuizQuestion[]
   dailyQuizAttempts  DailyQuizAttempt[]
   predictionBoosts   PredictionBoost[]
@@ -703,6 +710,53 @@ model Prediction {
   @@index([userId, gameId])
 }
 
+model BracketPrediction {
+  id           String  @id @default(cuid())
+  userId       String
+  gameId       String
+  tournamentId String
+  matchId      String?
+
+  slotKey    String
+  roundId    String
+  roundTitle String
+  slotIndex  Int
+
+  homeTeamId         String?
+  awayTeamId         String?
+  winnerTeamId       String?
+  predictedHomeScore Int?
+  predictedAwayScore Int?
+
+  pointsAwarded         Int @default(0)
+  weightUsed            Int @default(1)
+  weightedPointsAwarded Int @default(0)
+
+  wasExact       Boolean @default(false)
+  wasOutcomeOnly Boolean @default(false)
+  wasWrong       Boolean @default(false)
+
+  submittedAt       DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lockedAt          DateTime?
+  scoreCalculatedAt DateTime?
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game       Game       @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  tournament Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  match      Match?     @relation(fields: [matchId], references: [id], onDelete: SetNull)
+
+  homeTeam   Team? @relation("BracketPredictionHomeTeam", fields: [homeTeamId], references: [id], onDelete: SetNull)
+  awayTeam   Team? @relation("BracketPredictionAwayTeam", fields: [awayTeamId], references: [id], onDelete: SetNull)
+  winnerTeam Team? @relation("BracketPredictionWinnerTeam", fields: [winnerTeamId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, gameId, tournamentId, slotKey])
+  @@index([gameId, tournamentId])
+  @@index([userId, gameId])
+  @@index([matchId])
+  @@index([winnerTeamId])
+}
+
 model PredictionLineupPick {
   id           String @id @default(cuid())
   predictionId String
@@ -750,15 +804,15 @@ model GamePlayerCard {
   previousRating Int @default(40)
   ratingDelta    Int @default(0)
 
-  weightedPoints Int @default(0)
-  rawPoints      Int @default(0)
-  exactHits      Int @default(0)
-  correctResults Int @default(0)
-  wrongHits      Int @default(0)
-  predictions    Int @default(0)
-  finishedPicks  Int @default(0)
-  currentStreak  Int @default(0)
-  bestStreak     Int @default(0)
+  weightedPoints Int   @default(0)
+  rawPoints      Int   @default(0)
+  exactHits      Int   @default(0)
+  correctResults Int   @default(0)
+  wrongHits      Int   @default(0)
+  predictions    Int   @default(0)
+  finishedPicks  Int   @default(0)
+  currentStreak  Int   @default(0)
+  bestStreak     Int   @default(0)
   accuracyRate   Float @default(0)
   exactRate      Float @default(0)
 
@@ -806,19 +860,19 @@ model Course {
   priceCents Int    @default(0)
   currency   String @default("UAH")
 
-  coverUrl    String?
-  level       String?
-  duration    String?
-  lessonsCount Int   @default(0)
+  coverUrl     String?
+  level        String?
+  duration     String?
+  lessonsCount Int     @default(0)
 
   isPublished Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  subject CourseSubject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
-  teacher User?          @relation("CourseTeacher", fields: [teacherId], references: [id], onDelete: SetNull)
-  topics  CourseTopic[]
+  subject  CourseSubject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  teacher  User?          @relation("CourseTeacher", fields: [teacherId], references: [id], onDelete: SetNull)
+  topics   CourseTopic[]
   accesses CourseAccess[]
   orders   CourseOrder[]
 
@@ -873,7 +927,7 @@ model CourseLesson {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  topic  CourseTopic       @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  topic  CourseTopic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
   blocks CourseLessonBlock[]
 
   @@index([topicId, order])
@@ -881,12 +935,12 @@ model CourseLesson {
 }
 
 model CourseLessonBlock {
-  id       String @id @default(cuid())
+  id       String          @id @default(cuid())
   lessonId String
   type     LessonBlockType
   title    String?
   content  Json
-  order    Int   @default(0)
+  order    Int             @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -898,7 +952,7 @@ model CourseLessonBlock {
 }
 
 model CourseAccess {
-  id       String @id @default(cuid())
+  id       String  @id @default(cuid())
   userId   String
   courseId String
   orderId  String?
@@ -927,7 +981,7 @@ model CourseOrder {
   amountCents Int
   currency    String @default("UAH")
 
-  paymentProvider          String?
+  paymentProvider           String?
   providerCheckoutSessionId String?
   providerPaymentIntentId   String?
   providerRawPayload        Json?
@@ -937,8 +991,8 @@ model CourseOrder {
   paidAt      DateTime?
   cancelledAt DateTime?
 
-  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course  Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course   Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
   accesses CourseAccess[]
 
   @@index([userId, status])
@@ -947,9 +1001,9 @@ model CourseOrder {
 }
 
 model MatchFactEvent {
-  id      String @id @default(cuid())
-  matchId String
-  teamId  String?
+  id       String  @id @default(cuid())
+  matchId  String
+  teamId   String?
   playerId String?
 
   type   MatchFactEventType
@@ -1022,8 +1076,8 @@ model DailyQuizAttempt {
   boostAwardedValue Int @default(0)
 
   completedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
@@ -1060,7 +1114,7 @@ model PredictionBoost {
 
   sourceAttemptId String?
 
-  value  Int @default(2)
+  value  Int                   @default(2)
   status PredictionBoostStatus @default(AVAILABLE)
 
   expiresAt DateTime?
