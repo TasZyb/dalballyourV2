@@ -83,6 +83,7 @@ type IconType =
   | "matches"
   | "leaderboard"
   | "predict"
+  | "bracket"
   | "tasks"
   | "profile"
   | "members"
@@ -136,6 +137,18 @@ function NavIcon({
         <path d="M12 8v4l3 2" />
         <path d="M4 4l3 3" />
         <path d="M20 4l-3 3" />
+      </svg>
+    );
+  }
+
+  if (type === "bracket") {
+    return (
+      <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M5 5h5v5H5z" />
+        <path d="M5 14h5v5H5z" />
+        <path d="M14 9.5h5v5h-5z" />
+        <path d="M10 7.5h2c1.3 0 2 .7 2 2v2" />
+        <path d="M10 16.5h2c1.3 0 2-.7 2-2v-2" />
       </svg>
     );
   }
@@ -292,10 +305,8 @@ export default function GameLayout() {
     return location.pathname.startsWith(path);
   };
   const moreActive =
-    isActive(`${gameRootPath}/members`) ||
-    isActive(`${gameRootPath}/chat`) ||
-    isActive(`${gameRootPath}/profile`) ||
     isActive(`${gameRootPath}/leaderboard`) ||
+    isActive(`${gameRootPath}/bracket`) ||
     isActive(`${gameRootPath}/admin`);
 
   return (
@@ -353,15 +364,6 @@ export default function GameLayout() {
               active={isActive(`${gameRootPath}/matches`)}
             />
 
-            {!isGuestPreview ? (
-              <ShellLink
-                to={`${gameRootPath}/tasks`}
-                label="Tasks"
-                icon="tasks"
-                active={isActive(`${gameRootPath}/tasks`) || isActive(`${gameRootPath}/daily-quiz`)}
-              />
-            ) : null}
-
             <ShellLink
               to={`${gameRootPath}/leaderboard`}
               label="Table"
@@ -369,20 +371,11 @@ export default function GameLayout() {
               active={isActive(`${gameRootPath}/leaderboard`)}
             />
 
-            {!isGuestPreview ? (
-              <ShellLink
-                to={`${gameRootPath}/profile`}
-                label="Me"
-                icon="profile"
-                active={isActive(`${gameRootPath}/profile`)}
-              />
-            ) : null}
-
             <ShellLink
-              to={`${gameRootPath}/members`}
-              label="Squad"
-              icon="members"
-              active={isActive(`${gameRootPath}/members`)}
+              to={`${gameRootPath}/bracket`}
+              label="Bracket"
+              icon="bracket"
+              active={isActive(`${gameRootPath}/bracket`)}
             />
 
             <ShellLink
@@ -391,15 +384,6 @@ export default function GameLayout() {
               icon="predict"
               active={isActive(`${gameRootPath}/predict`)}
             />
-
-            {!isGuestPreview ? (
-              <ShellLink
-                to={`${gameRootPath}/chat`}
-                label="Chat"
-                icon="chat"
-                active={isActive(`${gameRootPath}/chat`)}
-              />
-            ) : null}
 
             {canManageGame && !isGuestPreview ? (
               <ShellLink
@@ -426,14 +410,12 @@ export default function GameLayout() {
             icon="home"
             active={isActive(gameRootPath)}
           />
-          {!isGuestPreview ? (
-            <MobileNavLink
-              to={`${gameRootPath}/tasks`}
-              label="Tasks"
-              icon="tasks"
-              active={isActive(`${gameRootPath}/tasks`) || isActive(`${gameRootPath}/daily-quiz`)}
-            />
-          ) : null}
+          <MobileNavLink
+            to={`${gameRootPath}/leaderboard`}
+            label="Table"
+            icon="leaderboard"
+            active={isActive(`${gameRootPath}/leaderboard`)}
+          />
           <MobileNavLink
             to={`${gameRootPath}/predict`}
             label="Predict"
@@ -465,37 +447,12 @@ export default function GameLayout() {
 
             <div className="absolute bottom-[66px] right-0 w-44 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--panel-solid)] p-1 shadow-2xl">
               <Link
-                to={`${gameRootPath}/leaderboard`}
+                to={`${gameRootPath}/bracket`}
                 className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-black text-[var(--text)]"
               >
-                <NavIcon type="leaderboard" className="h-4 w-4" />
-                Table
+                <NavIcon type="bracket" className="h-4 w-4" />
+                Bracket
               </Link>
-              <Link
-                to={`${gameRootPath}/members`}
-                className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-black text-[var(--text)]"
-              >
-                <NavIcon type="members" className="h-4 w-4" />
-                Squad
-              </Link>
-              {!isGuestPreview ? (
-                <>
-                  <Link
-                    to={`${gameRootPath}/profile`}
-                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-black text-[var(--text)]"
-                  >
-                    <NavIcon type="profile" className="h-4 w-4" />
-                    Me
-                  </Link>
-                  <Link
-                    to={`${gameRootPath}/chat`}
-                    className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-black text-[var(--text)]"
-                  >
-                    <NavIcon type="chat" className="h-4 w-4" />
-                    Chat
-                  </Link>
-                </>
-              ) : null}
               {canManageGame && !isGuestPreview ? (
                 <Link
                   to={`${gameRootPath}/admin`}

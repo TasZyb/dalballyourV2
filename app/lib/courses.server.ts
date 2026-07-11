@@ -55,31 +55,59 @@ export async function ensureCourseCatalog() {
 export async function getCoursesForUser(userId?: string | null) {
   await ensureCourseCatalog();
 
+  if (!userId) {
+    const courses = await prisma.course.findMany({
+      where: { isPublished: true },
+      orderBy: [{ priceCents: "asc" }, { createdAt: "asc" }],
+      include: {
+        subject: true,
+        topics: {
+          include: {
+            lessons: {
+              select: { id: true, isPublished: true },
+            },
+          },
+        },
+      },
+    });
+
+    return courses.map((course) => ({
+      ...course,
+      isOwned: false,
+      ownedAt: null,
+    }));
+  }
+
   const courses = await prisma.course.findMany({
     where: { isPublished: true },
     orderBy: [{ priceCents: "asc" }, { createdAt: "asc" }],
-    include: userId
-      ? {
-          accesses: {
-            where: {
-              userId,
-              revokedAt: null,
-            },
-            select: {
-              id: true,
-              grantedAt: true,
-            },
-            take: 1,
+    include: {
+      subject: true,
+      topics: {
+        include: {
+          lessons: {
+            select: { id: true, isPublished: true },
           },
-        }
-      : undefined,
+        },
+      },
+      accesses: {
+        where: {
+          userId,
+          revokedAt: null,
+        },
+        select: {
+          id: true,
+          grantedAt: true,
+        },
+        take: 1,
+      },
+    },
   });
 
   return courses.map((course) => ({
     ...course,
-    isOwned: "accesses" in course ? course.accesses.length > 0 : false,
-    ownedAt:
-      "accesses" in course ? course.accesses[0]?.grantedAt ?? null : null,
+    isOwned: course.accesses.length > 0,
+    ownedAt: course.accesses[0]?.grantedAt ?? null,
   }));
 }
 

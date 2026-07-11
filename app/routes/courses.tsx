@@ -105,6 +105,12 @@ export default function CoursesPage() {
 
           <div className="flex flex-wrap gap-2">
             <Link
+              to="/teacher/courses"
+              className="theme-button inline-flex rounded-2xl px-4 py-2 text-sm font-black"
+            >
+              Конструктор
+            </Link>
+            <Link
               to="/"
               className="theme-button inline-flex rounded-2xl px-4 py-2 text-sm font-black"
             >
@@ -172,14 +178,56 @@ export default function CoursesPage() {
 
         <section className="grid gap-4 lg:grid-cols-2">
           {courses.map((course) => (
-            <article
+            <CourseCard
               key={course.id}
-              className="theme-panel relative overflow-hidden rounded-[1.75rem] p-5"
-            >
-              <div className="absolute right-[-90px] top-[-90px] h-52 w-52 rounded-full bg-[var(--hero-glow)] opacity-50" />
+              course={course}
+              isSubmitting={isSubmitting}
+            />
+          ))}
+        </section>
+      </div>
+    </main>
+  );
+}
 
-              <div className="relative">
-                <div className="flex flex-wrap items-center gap-2">
+function CourseCard({
+  course,
+  isSubmitting,
+}: {
+  course: any;
+  isSubmitting: boolean;
+}) {
+  const subjectColor = course.subject?.color || "var(--accent)";
+  const lessonsCount =
+    course.topics?.reduce(
+      (sum: number, topic: any) => sum + topic.lessons.length,
+      0
+    ) ?? course.lessonsCount;
+  const publishedLessonsCount =
+    course.topics?.reduce(
+      (sum: number, topic: any) =>
+        sum +
+        topic.lessons.filter((lesson: any) => lesson.isPublished).length,
+      0
+    ) ?? 0;
+
+  return (
+            <article
+      className="theme-panel relative overflow-hidden rounded-[1.75rem]"
+            >
+      <div className="h-2" style={{ background: subjectColor }} />
+      <div className="p-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className="rounded-full px-3 py-1 text-xs font-black uppercase tracking-[0.12em]"
+            style={{
+              background: `color-mix(in srgb, ${subjectColor} 18%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${subjectColor} 34%, transparent)`,
+              color: subjectColor,
+            }}
+          >
+            {course.subject?.name ?? "Курс"}
+          </span>
                   {course.level ? (
                     <span className="theme-accent-bg rounded-full px-3 py-1 text-xs font-black uppercase">
                       {course.level}
@@ -191,12 +239,14 @@ export default function CoursesPage() {
                     </span>
                   ) : null}
                   <span className="theme-card-highlight rounded-full px-3 py-1 text-xs font-bold">
-                    {course.lessonsCount} уроків
+            {lessonsCount} уроків
                   </span>
                 </div>
 
                 <h2 className="mt-5 text-2xl font-black tracking-tight sm:text-3xl">
-                  {course.title}
+                  <Link to={`/courses/${course.id}`} className="hover:text-[var(--accent)]">
+                    {course.title}
+                  </Link>
                 </h2>
                 {course.subtitle ? (
                   <p className="theme-text-soft mt-3 text-sm leading-6">
@@ -209,6 +259,12 @@ export default function CoursesPage() {
                   </p>
                 ) : null}
 
+        <div className="mt-5 grid gap-2 sm:grid-cols-3">
+          <MiniStat label="теми" value={course.topics?.length ?? 0} />
+          <MiniStat label="уроки" value={lessonsCount} />
+          <MiniStat label="готові" value={publishedLessonsCount} />
+        </div>
+
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="theme-muted text-[10px] font-black uppercase tracking-[0.16em]">
@@ -220,28 +276,46 @@ export default function CoursesPage() {
                   </div>
 
                   {course.isOwned ? (
-                    <div className="theme-success-bg inline-flex min-h-12 items-center justify-center rounded-2xl px-5 text-sm font-black">
-                      Курс у тебе
-                    </div>
+                    <Link
+                      to={`/courses/${course.id}`}
+                      className="theme-success-bg inline-flex min-h-12 items-center justify-center rounded-2xl px-5 text-sm font-black"
+                    >
+                      Відкрити курс
+                    </Link>
                   ) : (
-                    <Form method="post">
-                      <input type="hidden" name="intent" value="buy-course" />
-                      <input type="hidden" name="courseId" value={course.id} />
-                      <button
-                        type="submit"
-                        disabled={isSubmitting}
-                        className="theme-primary-button inline-flex min-h-12 items-center justify-center rounded-2xl px-5 text-sm font-black disabled:opacity-60"
+                    <div className="flex flex-wrap gap-2">
+                      <Link
+                        to={`/courses/${course.id}`}
+                        className="theme-button inline-flex min-h-12 items-center justify-center rounded-2xl px-5 text-sm font-black"
                       >
-                        {isSubmitting ? "Додаю..." : "Купити курс"}
-                      </button>
-                    </Form>
+                        Деталі
+                      </Link>
+                      <Form method="post">
+                        <input type="hidden" name="intent" value="buy-course" />
+                        <input type="hidden" name="courseId" value={course.id} />
+                        <button
+                          type="submit"
+                          disabled={isSubmitting}
+                          className="theme-primary-button inline-flex min-h-12 items-center justify-center rounded-2xl px-5 text-sm font-black disabled:opacity-60"
+                        >
+                          {isSubmitting ? "Додаю..." : "Купити курс"}
+                        </button>
+                      </Form>
+                    </div>
                   )}
                 </div>
               </div>
             </article>
-          ))}
-        </section>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="theme-card-highlight rounded-[1rem] px-3 py-2">
+      <div className="text-xl font-black">{value}</div>
+      <div className="theme-muted text-[10px] font-black uppercase tracking-[0.12em]">
+        {label}
       </div>
-    </main>
+    </div>
   );
 }

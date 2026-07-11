@@ -620,6 +620,13 @@ function LobbyHeader({
 
       <div className="flex items-center gap-2">
         <Link
+          to="/courses"
+          className="theme-button hidden rounded-2xl px-4 py-2 text-sm font-bold sm:inline-flex"
+        >
+          Курси
+        </Link>
+
+        <Link
           to="/me"
           className="theme-button hidden rounded-2xl px-4 py-2 text-sm font-bold sm:inline-flex"
         >

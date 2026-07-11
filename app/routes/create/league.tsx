@@ -20,6 +20,7 @@ type ActionData = {
     name?: string;
     description?: string;
     linkedTournamentId?: string;
+    selectedTournamentIds?: string[];
     visibility?: string;
     allowJoinByCode?: string;
     allowMemberPredictionsEdit?: string;
@@ -120,7 +121,11 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const name = String(formData.get("name") || "").trim();
   const description = String(formData.get("description") || "").trim();
-  const linkedTournamentId = String(formData.get("linkedTournamentId") || "").trim();
+  const selectedTournamentIds = formData
+    .getAll("selectedTournamentId")
+    .map((value) => String(value))
+    .filter(Boolean);
+  const linkedTournamentId = selectedTournamentIds[0] ?? "";
   const visibility = String(formData.get("visibility") || "PRIVATE").trim();
 
   const allowJoinByCode = formData.get("allowJoinByCode") === "on";
@@ -136,6 +141,7 @@ export async function action({ request }: ActionFunctionArgs) {
     name,
     description,
     linkedTournamentId,
+    selectedTournamentIds,
     visibility,
     allowJoinByCode: allowJoinByCode ? "on" : "",
     allowMemberPredictionsEdit: allowMemberPredictionsEdit ? "on" : "",
@@ -181,17 +187,21 @@ export async function action({ request }: ActionFunctionArgs) {
 
   let tournamentIdToSave: string | null = null;
 
-  if (linkedTournamentId) {
-    const tournament = await prisma.tournament.findUnique({
-      where: { id: linkedTournamentId },
+  if (selectedTournamentIds.length > 0) {
+    const tournaments = await prisma.tournament.findMany({
+      where: {
+        id: {
+          in: selectedTournamentIds,
+        },
+      },
       select: { id: true },
     });
 
-    if (!tournament) {
+    if (tournaments.length !== selectedTournamentIds.length) {
       return data<ActionData>(
         {
           errors: {
-            general: "Обраний турнір не знайдено.",
+            general: "Один або кілька обраних турнірів не знайдено.",
           },
           values,
         },
@@ -199,38 +209,79 @@ export async function action({ request }: ActionFunctionArgs) {
       );
     }
 
-    tournamentIdToSave = tournament.id;
+    tournamentIdToSave = linkedTournamentId;
   }
 
   try {
     const inviteCode = await createUniqueInviteCode();
     const slug = await createUniqueSlug(name);
 
-    const game = await prisma.game.create({
-      data: {
-        name,
-        slug,
-        description: description || null,
-        ownerId: currentUser.id,
-        linkedTournamentId: tournamentIdToSave,
-        inviteCode,
-        visibility: visibility as "PRIVATE" | "PUBLIC" | "UNLISTED",
-        status: "ACTIVE",
-        allowJoinByCode,
-        allowMemberPredictionsEdit,
-        scoringExact,
-        scoringOutcome,
-        scoringWrong,
-        lockMinutesBeforeStart,
-        members: {
-          create: {
-            userId: currentUser.id,
-            role: "OWNER",
-            status: "ACTIVE",
+    const game = await prisma.$transaction(async (tx) => {
+      const createdGame = await tx.game.create({
+        data: {
+          name,
+          slug,
+          description: description || null,
+          ownerId: currentUser.id,
+          linkedTournamentId: tournamentIdToSave,
+          inviteCode,
+          visibility: visibility as "PRIVATE" | "PUBLIC" | "UNLISTED",
+          status: "ACTIVE",
+          allowJoinByCode,
+          allowMemberPredictionsEdit,
+          scoringExact,
+          scoringOutcome,
+          scoringWrong,
+          lockMinutesBeforeStart,
+          members: {
+            create: {
+              userId: currentUser.id,
+              role: "OWNER",
+              status: "ACTIVE",
+            },
           },
         },
-      },
-      select: { id: true },
+        select: { id: true },
+      });
+
+      if (selectedTournamentIds.length > 0) {
+        const matches = await tx.match.findMany({
+          where: {
+            tournamentId: {
+              in: selectedTournamentIds,
+            },
+            status: {
+              not: "FINISHED",
+            },
+          },
+          include: {
+            round: true,
+          },
+        });
+
+        if (matches.length > 0) {
+          await tx.gameMatch.createMany({
+            data: matches.map((match) => ({
+              gameId: createdGame.id,
+              matchId: match.id,
+              customWeight: match.round?.defaultWeight ?? null,
+              predictionOpensAt: new Date(
+                match.startTime.getTime() - 24 * 60 * 60_000
+              ),
+              predictionClosesAt: new Date(
+                match.startTime.getTime() -
+                  60_000 * Math.max(0, lockMinutesBeforeStart || 0)
+              ),
+              includeInLeaderboard: true,
+              isLocked:
+                match.status === "FINISHED" || new Date() >= match.startTime,
+            })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      return createdGame;
     });
 
     return redirect(`/games/${game.id}`);
@@ -364,6 +415,38 @@ function Checkbox({
   );
 }
 
+function TournamentCheckbox({
+  id,
+  name,
+  country,
+  seasonLabel,
+  defaultChecked,
+}: {
+  id: string;
+  name: string;
+  country?: string | null;
+  seasonLabel?: string | null;
+  defaultChecked?: boolean;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/10 bg-[#0b1018] px-4 py-3 transition hover:border-white/20 hover:bg-white/[0.06]">
+      <input
+        type="checkbox"
+        name="selectedTournamentId"
+        value={id}
+        defaultChecked={defaultChecked}
+        className="mt-1 h-4 w-4 rounded border-white/20 bg-transparent"
+      />
+      <div className="min-w-0">
+        <div className="truncate text-sm font-black text-white">{name}</div>
+        <div className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-white/40">
+          {[country, seasonLabel].filter(Boolean).join(" · ") || "Турнір"}
+        </div>
+      </div>
+    </label>
+  );
+}
+
 function Select({
   name,
   label,
@@ -403,7 +486,7 @@ export default function CreateLeaguePage() {
         <div className="space-y-4">
           <SectionCard
             title="Основна інформація"
-            subtitle="Задай базу для дружньої ліги: назва, опис і турнір."
+            subtitle="Крок 1: назва, короткий сенс гри і список реальних турнірів."
           >
             <div className="grid gap-4">
               <Input
@@ -423,24 +506,6 @@ export default function CreateLeaguePage() {
               />
 
               <Select
-                name="linkedTournamentId"
-                label="Прив’язаний турнір"
-                defaultValue={values?.linkedTournamentId || ""}
-              >
-                <option value="">Без прив’язки</option>
-                {tournaments.map((tournament) => (
-                  <option key={tournament.id} value={tournament.id}>
-                    {tournament.name}
-                    {tournament.season?.yearLabel
-                      ? ` — ${tournament.season.yearLabel}`
-                      : tournament.season?.name
-                      ? ` — ${tournament.season.name}`
-                      : ""}
-                  </option>
-                ))}
-              </Select>
-
-              <Select
                 name="visibility"
                 label="Видимість"
                 defaultValue={values?.visibility || "PRIVATE"}
@@ -453,8 +518,40 @@ export default function CreateLeaguePage() {
           </SectionCard>
 
           <SectionCard
+            title="Ліги і турніри"
+            subtitle="Обери АПЛ, ЛаЛігу, ЛЧ або будь-які доступні турніри. Їхні майбутні матчі автоматично потраплять у гру."
+          >
+            {tournaments.length > 0 ? (
+              <div className="grid max-h-[420px] gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+                {tournaments.map((tournament) => {
+                  const seasonLabel =
+                    tournament.season?.yearLabel ?? tournament.season?.name ?? null;
+
+                  return (
+                    <TournamentCheckbox
+                      key={tournament.id}
+                      id={tournament.id}
+                      name={tournament.name}
+                      country={tournament.country}
+                      seasonLabel={seasonLabel}
+                      defaultChecked={values?.selectedTournamentIds?.includes(
+                        tournament.id
+                      )}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-amber-100/80">
+                Активних турнірів поки немає. Лігу можна створити зараз, а матчі
+                додати пізніше в адмінці.
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
             title="Правила ліги"
-            subtitle="Налаштуй базову систему балів."
+            subtitle="Крок 2: налаштуй бали, дедлайн і поведінку прогнозів."
           >
             <div className="grid gap-4 sm:grid-cols-3">
               <Input
@@ -524,7 +621,8 @@ export default function CreateLeaguePage() {
               <div className="rounded-2xl border border-white/10 bg-[#0b1018] p-4">
                 <div className="text-sm font-semibold text-white">Модель</div>
                 <div className="mt-1 text-sm leading-6 text-white/55">
-                  Це ліга для кількох людей: таблиця, матчі, прогнози і конкуренція.
+                  Це груповий режим: друзі, реальні матчі, прості прогнози і
+                  зрозуміла таблиця.
                 </div>
               </div>
 
@@ -538,7 +636,8 @@ export default function CreateLeaguePage() {
               <div className="rounded-2xl border border-white/10 bg-[#0b1018] p-4">
                 <div className="text-sm font-semibold text-white">Далі</div>
                 <div className="mt-1 text-sm leading-6 text-white/55">
-                  Потім можна буде додавати матчі, учасників, банер, налаштування та інше.
+                  Після створення відкриється гра з матчами, таблицею,
+                  прогнозом, сіткою плейофів і адмінкою.
                 </div>
               </div>
             </div>

@@ -47,6 +47,7 @@ model User {
   playerCards   GamePlayerCard[]
   courseAccesses CourseAccess[]
   courseOrders   CourseOrder[]
+  authoredCourses Course[] @relation("CourseTeacher")
 
   @@index([email])
   @@index([displayName])
@@ -799,6 +800,8 @@ model Course {
   title       String
   subtitle    String?
   description String?
+  subjectId   String?
+  teacherId   String?
 
   priceCents Int    @default(0)
   currency   String @default("UAH")
@@ -813,11 +816,85 @@ model Course {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  subject CourseSubject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  teacher User?          @relation("CourseTeacher", fields: [teacherId], references: [id], onDelete: SetNull)
+  topics  CourseTopic[]
   accesses CourseAccess[]
   orders   CourseOrder[]
 
+  @@index([subjectId])
+  @@index([teacherId])
   @@index([isPublished])
   @@index([priceCents])
+}
+
+model CourseSubject {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  description String?
+  color       String?
+  icon        String?
+  order       Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  courses Course[]
+
+  @@index([order])
+}
+
+model CourseTopic {
+  id          String  @id @default(cuid())
+  courseId    String
+  title       String
+  description String?
+  order       Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  course  Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons CourseLesson[]
+
+  @@index([courseId, order])
+}
+
+model CourseLesson {
+  id          String  @id @default(cuid())
+  topicId     String
+  title       String
+  summary     String?
+  order       Int     @default(0)
+  durationMin Int?
+  isPublished Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  topic  CourseTopic       @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  blocks CourseLessonBlock[]
+
+  @@index([topicId, order])
+  @@index([isPublished])
+}
+
+model CourseLessonBlock {
+  id       String @id @default(cuid())
+  lessonId String
+  type     LessonBlockType
+  title    String?
+  content  Json
+  order    Int   @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lesson CourseLesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId, order])
+  @@index([type])
 }
 
 model CourseAccess {
@@ -1101,6 +1178,18 @@ enum CourseOrderStatus {
   CANCELLED
   FAILED
   REFUNDED
+}
+
+enum LessonBlockType {
+  THEORY
+  EXAMPLE
+  MATH
+  CODE
+  VOCABULARY
+  VIDEO
+  MINI_TEST
+  TASK
+  CALLOUT
 }
 
 enum MatchStatus {

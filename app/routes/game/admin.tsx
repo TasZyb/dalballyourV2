@@ -12,6 +12,7 @@ import { useMemo, useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 import { FootballLoader } from "~/components/FootballLoader";
+import { MatchPickerPanel } from "~/components/game/admin/MatchPickerPanel";
 
 const GAME_MEMBER_ROLE = {
   OWNER: "OWNER",
@@ -101,19 +102,6 @@ async function getUniqueGameInviteCode() {
   }
 
   throw new Error("Не вдалося згенерувати унікальний invite code");
-}
-
-async function getFallbackTournament() {
-  return prisma.tournament.upsert({
-    where: { name: "Без турніру" },
-    update: {},
-    create: {
-      name: "Без турніру",
-      slug: "no-tournament",
-      type: "SYSTEM",
-      isActive: true,
-    },
-  });
 }
 
 async function requireGameAdmin(request: Request, gameId: string) {
@@ -258,10 +246,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
   const { currentUser, game, myRole } = await requireGameAdmin(request, gameId);
 
-  const teams = await prisma.team.findMany({
-    orderBy: { name: "asc" },
-  });
-
   const tournaments = await prisma.tournament.findMany({
     include: {
       season: true,
@@ -318,6 +302,42 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     take: 100,
   });
 
+  const availableMatches = await prisma.match.findMany({
+    where: {
+      status: {
+        not: MATCH_STATUS.FINISHED,
+      },
+      gameMatches: {
+        none: {
+          gameId,
+        },
+      },
+    },
+    include: {
+      tournament: {
+        include: {
+          season: true,
+        },
+      },
+      round: true,
+      homeTeam: true,
+      awayTeam: true,
+    },
+    orderBy: [{ startTime: "asc" }, { tournament: { name: "asc" } }],
+    take: 500,
+  });
+
+  const availableTournamentOptions = tournaments
+    .map((tournament) => ({
+      id: tournament.id,
+      name: tournament.name,
+      seasonLabel: tournament.season?.yearLabel ?? tournament.season?.name ?? null,
+      availableMatchesCount: availableMatches.filter(
+        (match) => match.tournamentId === tournament.id
+      ).length,
+    }))
+    .filter((tournament) => tournament.availableMatchesCount > 0);
+
   const invites = await prisma.gameInvite.findMany({
     where: {
       gameId,
@@ -328,20 +348,13 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     },
   });
 
-  const rounds = tournaments.flatMap((tournament) =>
-    tournament.rounds.map((round) => ({
-      ...round,
-      tournament,
-    }))
-  );
-
   return data({
     currentUser,
     game,
     myRole,
-    teams,
     tournaments,
-    rounds,
+    availableMatches,
+    availableTournamentOptions,
     members,
     gameMatches,
     invites,
@@ -355,7 +368,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     throw new Response("Game not found", { status: 404 });
   }
 
-  const { currentUser } = await requireGameAdmin(request, gameId);
+  const { currentUser, game } = await requireGameAdmin(request, gameId);
 
   const formData = await request.formData();
   const intent = String(formData.get("intent") || "");
@@ -448,65 +461,117 @@ export async function action({ request, params }: ActionFunctionArgs) {
     return redirect(`/games/${gameId}/admin`);
   }
 
-  if (intent === "createAndAddMatch") {
-    const tournamentIdRaw = String(formData.get("tournamentId") || "");
-    const roundIdRaw = String(formData.get("roundId") || "");
-    const homeTeamId = String(formData.get("homeTeamId") || "");
-    const awayTeamId = String(formData.get("awayTeamId") || "");
-    const startTimeRaw = String(formData.get("startTime") || "");
+  if (intent === "addExistingMatchToGame") {
+    const matchIds = formData
+      .getAll("matchId")
+      .map((value) => String(value))
+      .filter(Boolean);
     const customWeightRaw = String(formData.get("customWeight") || "");
     const predictionClosesAtRaw = String(
       formData.get("predictionClosesAt") || ""
     );
-    const venue = String(formData.get("venue") || "").trim();
-    const stageLabel = String(formData.get("stageLabel") || "").trim();
-    const matchdayLabel = String(formData.get("matchdayLabel") || "").trim();
 
-    if (!homeTeamId || !awayTeamId || !startTimeRaw) {
+    if (matchIds.length === 0) {
+      return data({ error: "Вибери хоча б один матч." }, { status: 400 });
+    }
+
+    const matches = await prisma.match.findMany({
+      where: {
+        id: {
+          in: matchIds,
+        },
+        status: {
+          not: MATCH_STATUS.FINISHED,
+        },
+      },
+      include: { round: true },
+    });
+
+    if (matches.length !== matchIds.length) {
       return data(
-        { error: "Вибери команди і дату матчу." },
-        { status: 400 }
+        { error: "Один або кілька матчів не знайдено або вже завершено." },
+        { status: 404 }
       );
     }
 
-    if (homeTeamId === awayTeamId) {
-      return data(
-        { error: "Команда не може грати сама проти себе." },
-        { status: 400 }
-      );
+    await prisma.gameMatch.createMany({
+      data: matches.map((match) => {
+        const closesAt = predictionClosesAtRaw
+          ? new Date(predictionClosesAtRaw)
+          : new Date(
+              match.startTime.getTime() -
+                60_000 * Math.max(1, game.lockMinutesBeforeStart || 15)
+            );
+
+        return {
+          gameId,
+          matchId: match.id,
+          customWeight: customWeightRaw
+            ? Number(customWeightRaw)
+            : match.round?.defaultWeight ?? null,
+          predictionOpensAt: new Date(
+            match.startTime.getTime() - 24 * 60 * 60_000
+          ),
+          predictionClosesAt: closesAt,
+          includeInLeaderboard: true,
+          isLocked:
+            match.status === MATCH_STATUS.FINISHED ||
+            new Date() >= match.startTime,
+        };
+      }),
+      skipDuplicates: true,
+    });
+
+    return redirect(`/games/${gameId}/admin`);
+  }
+
+  if (intent === "addTournamentMatchesToGame") {
+    const tournamentId = String(formData.get("tournamentId") || "");
+
+    if (!tournamentId) {
+      return data({ error: "Вибери турнір." }, { status: 400 });
     }
 
-    const fallbackTournament = tournamentIdRaw
-      ? null
-      : await getFallbackTournament();
-
-    const tournamentId = tournamentIdRaw || fallbackTournament!.id;
-
-    const match = await prisma.match.create({
-      data: {
+    const matches = await prisma.match.findMany({
+      where: {
         tournamentId,
-        roundId: roundIdRaw || null,
-        homeTeamId,
-        awayTeamId,
-        startTime: new Date(startTimeRaw),
-        status: MATCH_STATUS.SCHEDULED,
-        venue: venue || null,
-        stageLabel: stageLabel || null,
-        matchdayLabel: matchdayLabel || null,
+        status: {
+          not: MATCH_STATUS.FINISHED,
+        },
+        gameMatches: {
+          none: {
+            gameId,
+          },
+        },
+      },
+      include: {
+        round: true,
       },
     });
 
-    await prisma.gameMatch.create({
-      data: {
+    if (matches.length === 0) {
+      return data(
+        { error: "У цьому турнірі немає матчів, які можна додати." },
+        { status: 400 }
+      );
+    }
+
+    await prisma.gameMatch.createMany({
+      data: matches.map((match) => ({
         gameId,
         matchId: match.id,
-        customWeight: customWeightRaw ? Number(customWeightRaw) : null,
-        predictionClosesAt: predictionClosesAtRaw
-          ? new Date(predictionClosesAtRaw)
-          : null,
+        customWeight: match.round?.defaultWeight ?? null,
+        predictionOpensAt: new Date(match.startTime.getTime() - 24 * 60 * 60_000),
+        predictionClosesAt: new Date(
+          match.startTime.getTime() -
+            60_000 * Math.max(1, game.lockMinutesBeforeStart || 15)
+        ),
         includeInLeaderboard: true,
-        isLocked: false,
-      },
+        isLocked:
+          match.status === MATCH_STATUS.FINISHED ||
+          new Date() >= match.startTime,
+      })),
+      skipDuplicates: true,
     });
 
     return redirect(`/games/${gameId}/admin`);
@@ -825,8 +890,15 @@ function UserName({
 }
 
 export default function GameAdminPage() {
-  const { game, teams, tournaments, rounds, members, gameMatches, invites } =
-    useLoaderData<typeof loader>();
+  const {
+    game,
+    tournaments,
+    availableMatches,
+    availableTournamentOptions,
+    members,
+    gameMatches,
+    invites,
+  } = useLoaderData<typeof loader>();
 
   const navigation = useNavigation();
 
@@ -870,7 +942,7 @@ export default function GameAdminPage() {
           isBusy ? "pointer-events-none select-none opacity-80" : "opacity-100"
         }`}
       >
-        <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/30 backdrop-blur-xl sm:p-6 md:p-8">
+        <section className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-white/5 p-4 shadow-2xl shadow-black/30 backdrop-blur-xl sm:rounded-[2rem] sm:p-6 md:p-8">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold uppercase tracking-[0.22em] text-white/50">
@@ -878,7 +950,7 @@ export default function GameAdminPage() {
                 Game Admin
               </div>
 
-              <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
+              <h1 className="text-2xl font-black tracking-tight sm:text-4xl">
                 Адмінка гри {game.name}
               </h1>
 
@@ -892,7 +964,7 @@ export default function GameAdminPage() {
               <div className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-200/70">
                 Код гри
               </div>
-              <div className="mt-2 break-all text-3xl font-black tracking-[0.18em] text-emerald-100">
+              <div className="mt-2 break-all text-2xl font-black tracking-[0.18em] text-emerald-100 sm:text-3xl">
                 {game.inviteCode}
               </div>
               <div className="mt-2 text-sm text-emerald-100/70">
@@ -926,212 +998,35 @@ export default function GameAdminPage() {
         </section>
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+          <div className="rounded-[1.25rem] border border-white/10 bg-white/5 p-4 backdrop-blur-xl sm:rounded-[1.5rem] sm:p-5">
             <div className="text-sm text-white/45">Матчів у грі</div>
-            <div className="mt-2 text-3xl font-black">{gameMatches.length}</div>
+            <div className="mt-2 text-2xl font-black sm:text-3xl">{gameMatches.length}</div>
           </div>
 
-          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+          <div className="rounded-[1.25rem] border border-white/10 bg-white/5 p-4 backdrop-blur-xl sm:rounded-[1.5rem] sm:p-5">
             <div className="text-sm text-white/45">Live зараз</div>
-            <div className="mt-2 text-3xl font-black">{liveMatches.length}</div>
+            <div className="mt-2 text-2xl font-black sm:text-3xl">{liveMatches.length}</div>
           </div>
 
-          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+          <div className="rounded-[1.25rem] border border-white/10 bg-white/5 p-4 backdrop-blur-xl sm:rounded-[1.5rem] sm:p-5">
             <div className="text-sm text-white/45">Учасників</div>
-            <div className="mt-2 text-3xl font-black">{members.length}</div>
+            <div className="mt-2 text-2xl font-black sm:text-3xl">{members.length}</div>
           </div>
 
-          <div className="rounded-[1.5rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+          <div className="rounded-[1.25rem] border border-white/10 bg-white/5 p-4 backdrop-blur-xl sm:rounded-[1.5rem] sm:p-5">
             <div className="text-sm text-white/45">Турнірів</div>
-            <div className="mt-2 text-3xl font-black">{tournaments.length}</div>
+            <div className="mt-2 text-2xl font-black sm:text-3xl">{tournaments.length}</div>
           </div>
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px]">
           <div className="space-y-6">
-            <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6">
-              <div className="mb-5 flex items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white">
-                  <AdminIcon type="match" />
-                </div>
-
-                <div>
-                  <h2 className="text-2xl font-black">
-                    Створити матч і додати в гру
-                  </h2>
-                  <p className="mt-1 text-sm text-white/50">
-                    Турнір і етап можна не вказувати. Якщо турнір не вибрано,
-                    матч піде в “Без турніру”.
-                  </p>
-                </div>
-              </div>
-
-              <Form method="post" className="space-y-5">
-                <input type="hidden" name="intent" value="createAndAddMatch" />
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-white/75">
-                      Домашня команда
-                    </label>
-                    <select
-                      name="homeTeamId"
-                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
-                      required
-                      disabled={isSubmitting}
-                    >
-                      <option value="">Оберіть команду</option>
-                      {teams.map((team) => (
-                        <option key={team.id} value={team.id}>
-                          {team.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-white/75">
-                      Гостьова команда
-                    </label>
-                    <select
-                      name="awayTeamId"
-                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
-                      required
-                      disabled={isSubmitting}
-                    >
-                      <option value="">Оберіть команду</option>
-                      {teams.map((team) => (
-                        <option key={team.id} value={team.id}>
-                          {team.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-white/75">
-                      Турнір
-                    </label>
-                    <select
-                      name="tournamentId"
-                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
-                      disabled={isSubmitting}
-                    >
-                      <option value="">Без турніру</option>
-                      {tournaments.map((tournament) => (
-                        <option key={tournament.id} value={tournament.id}>
-                          {tournament.name}
-                          {tournament.season?.yearLabel
-                            ? ` (${tournament.season.yearLabel})`
-                            : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-white/75">
-                      Етап
-                    </label>
-                    <select
-                      name="roundId"
-                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
-                      disabled={isSubmitting}
-                    >
-                      <option value="">Без етапу</option>
-                      {rounds.map((round) => (
-                        <option key={round.id} value={round.id}>
-                          {round.tournament.name} · {round.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-white/75">
-                      Дата і час
-                    </label>
-                    <input
-                      name="startTime"
-                      type="datetime-local"
-                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
-                      required
-                      disabled={isSubmitting}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-white/75">
-                      Дедлайн прогнозу
-                    </label>
-                    <input
-                      name="predictionClosesAt"
-                      type="datetime-local"
-                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none focus:border-white/20"
-                      disabled={isSubmitting}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-white/75">
-                      Вага матчу
-                    </label>
-                    <input
-                      name="customWeight"
-                      type="number"
-                      min="1"
-                      placeholder="1"
-                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                      disabled={isSubmitting}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-white/75">
-                      Стадіон
-                    </label>
-                    <input
-                      name="venue"
-                      placeholder="Wembley"
-                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                      disabled={isSubmitting}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-white/75">
-                      Підпис етапу
-                    </label>
-                    <input
-                      name="stageLabel"
-                      placeholder="1/4 фіналу"
-                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                      disabled={isSubmitting}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-white/75">
-                      Тур / matchday
-                    </label>
-                    <input
-                      name="matchdayLabel"
-                      placeholder="Тур 1"
-                      className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none placeholder:text-white/25 focus:border-white/20"
-                      disabled={isSubmitting}
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isSubmitting ? "Збереження..." : "Створити матч"}
-                </button>
-              </Form>
-            </section>
+            <MatchPickerPanel
+              icon={<AdminIcon type="match" />}
+              availableMatches={availableMatches}
+              availableTournamentOptions={availableTournamentOptions}
+              isSubmitting={isSubmitting}
+            />
 
             <section className="rounded-[2rem] border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-6">
               <div className="mb-5 flex items-start gap-3">

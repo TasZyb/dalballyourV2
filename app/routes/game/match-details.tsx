@@ -16,7 +16,9 @@ import {
   isGuestPreviewGame,
 } from "~/lib/guest-preview.server";
 import { FootballLoader } from "~/components/FootballLoader";
-import { getTeamLogoSrc, getTournamentLogoSrc } from "~/lib/logo-utils";
+import { TeamLine } from "~/components/game/TeamLogo";
+import { TournamentBadge } from "~/components/game/TournamentBadge";
+import { StatusPill } from "~/components/game/StatusPill";
 
 const LIVE_STATUSES = ["LIVE", "IN_PLAY", "PAUSED", "HALFTIME", "BREAK"];
 const UPCOMING_STATUSES = ["SCHEDULED", "TIMED"];
@@ -82,30 +84,6 @@ function calculatePredictionPoints(params: {
     wasOutcomeOnly,
     wasWrong: !wasExact && !wasOutcomeOnly,
   };
-}
-
-function getStatusLabel(status: string) {
-  switch (status) {
-    case "SCHEDULED":
-    case "TIMED":
-      return "Скоро";
-    case "LIVE":
-    case "IN_PLAY":
-      return "LIVE";
-    case "PAUSED":
-    case "HALFTIME":
-    case "BREAK":
-      return "Перерва";
-    case "FINISHED":
-      return "Завершено";
-    case "CANCELED":
-    case "CANCELLED":
-      return "Скасовано";
-    case "POSTPONED":
-      return "Перенесено";
-    default:
-      return status;
-  }
 }
 
 function getPredictionDeadline(startTime: Date, lockMinutesBeforeStart: number) {
@@ -641,142 +619,6 @@ function UserAvatar({
   );
 }
 
-function TeamCell({
-  team,
-  align = "left",
-  strong = false,
-}: {
-  team: any;
-  align?: "left" | "right";
-  strong?: boolean;
-}) {
-  const logoSrc = getTeamLogoSrc(team);
-
-  return (
-    <div
-      className={[
-        "flex min-w-0 items-center gap-2",
-        align === "right" ? "justify-end text-right" : "",
-      ].join(" ")}
-    >
-      {align === "right" && (
-        <div className="min-w-0">
-          <div
-            className={
-              strong
-                ? "truncate text-sm font-black text-[var(--text)] sm:text-base"
-                : "truncate text-[13px] font-bold text-[var(--text)] sm:text-sm"
-            }
-          >
-            {team.shortName || team.name}
-          </div>
-          <div className="hidden truncate text-[10px] text-[var(--muted)] sm:block">
-            {team.code || team.name}
-          </div>
-        </div>
-      )}
-
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--border)] bg-[var(--panel)]">
-        {logoSrc ? (
-          <img
-            src={logoSrc}
-            alt={team.name}
-            className="h-5 w-5 object-contain"
-            loading="lazy"
-          />
-        ) : (
-          <span className="text-[9px] font-black text-[var(--text-soft)]">
-            {(team.code || team.shortName || team.name).slice(0, 3).toUpperCase()}
-          </span>
-        )}
-      </div>
-
-      {align === "left" && (
-        <div className="min-w-0">
-          <div
-            className={
-              strong
-                ? "truncate text-sm font-black text-[var(--text)] sm:text-base"
-                : "truncate text-[13px] font-bold text-[var(--text)] sm:text-sm"
-            }
-          >
-            {team.shortName || team.name}
-          </div>
-          <div className="hidden truncate text-[10px] text-[var(--muted)] sm:block">
-            {team.code || team.name}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TournamentBadge({
-  tournament,
-  label,
-}: {
-  tournament?: any;
-  label?: string | null;
-}) {
-  if (!tournament && !label) return null;
-
-  const logoSrc = getTournamentLogoSrc(tournament);
-
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-      {tournament ? (
-        <div className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--panel)] px-2 py-0.5">
-          <div className="flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/90">
-            {logoSrc ? (
-              <img
-                src={logoSrc}
-                alt={tournament.name}
-                className="h-3 w-3 object-contain"
-                loading="lazy"
-              />
-            ) : (
-              <span className="text-[8px] font-bold text-black/70">
-                {tournament.name.slice(0, 2).toUpperCase()}
-              </span>
-            )}
-          </div>
-
-          <span className="max-w-[140px] truncate text-[11px] text-[var(--text-soft)] sm:max-w-none">
-            {tournament.name}
-          </span>
-        </div>
-      ) : null}
-
-      {label ? (
-        <div className="inline-flex items-center rounded-full border border-[var(--border)] bg-[var(--panel)] px-2 py-0.5 text-[11px] text-[var(--muted)]">
-          {label}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function StatusPill({ status }: { status: string }) {
-  const className = isLiveStatus(status)
-    ? "border-red-400/20 bg-red-500/15 text-red-300"
-    : isFinishedStatus(status)
-    ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
-    : isUpcomingStatus(status)
-    ? "border-[var(--accent)]/20 bg-[var(--accent-soft)] text-[var(--accent)]"
-    : "border-[var(--border)] bg-[var(--panel)] text-[var(--text-soft)]";
-
-  return (
-    <span
-      className={[
-        "inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em]",
-        className,
-      ].join(" ")}
-    >
-      {getStatusLabel(status)}
-    </span>
-  );
-}
-
 function MatchSidebarItem({
   item,
   gameId,
@@ -802,7 +644,7 @@ function MatchSidebarItem({
       ].join(" ")}
     >
       <div className="flex min-w-0 flex-col gap-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <TournamentBadge tournament={match.tournament} label={tournamentSubLabel} />
 
           <div className="flex shrink-0 items-center gap-1.5">
@@ -820,10 +662,10 @@ function MatchSidebarItem({
           </div>
         </div>
 
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-          <TeamCell team={match.homeTeam} align="left" />
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5 sm:gap-2">
+          <TeamLine team={match.homeTeam} align="left" />
 
-          <div className="flex min-w-[72px] flex-col items-center justify-center">
+          <div className="flex min-w-[58px] flex-col items-center justify-center sm:min-w-[72px]">
             <div className="text-sm font-black tracking-tight text-[var(--text)]">
               {hasScore
                 ? `${match.homeScore ?? 0}:${match.awayScore ?? 0}`
@@ -837,7 +679,7 @@ function MatchSidebarItem({
             </div>
           </div>
 
-          <TeamCell team={match.awayTeam} align="right" />
+          <TeamLine team={match.awayTeam} align="right" />
         </div>
       </div>
     </Link>
@@ -1155,7 +997,11 @@ export default function MatchDetailsPage() {
                   </div>
 
                   <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3">
-                    <TeamCell team={selectedMatch.homeTeam} align="left" strong />
+                    <TeamLine
+                      team={selectedMatch.homeTeam}
+                      align="left"
+                      strong
+                    />
 
                     <div className="flex min-w-[82px] flex-col items-center justify-center sm:min-w-[90px]">
                       <div className="text-2xl font-black tracking-tight text-[var(--text)] sm:text-3xl">
@@ -1172,7 +1018,11 @@ export default function MatchDetailsPage() {
                       </div>
                     </div>
 
-                    <TeamCell team={selectedMatch.awayTeam} align="right" strong />
+                    <TeamLine
+                      team={selectedMatch.awayTeam}
+                      align="right"
+                      strong
+                    />
                   </div>
 
                   <div className="flex flex-wrap gap-2 text-xs text-[var(--text-soft)]">

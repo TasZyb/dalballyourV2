@@ -9,7 +9,8 @@ import { useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 import { FootballLoader } from "~/components/FootballLoader";
-import { getTeamLogoSrc, getTournamentLogoSrc } from "~/lib/logo-utils";
+import { TeamLine } from "~/components/game/TeamLogo";
+import { TournamentBadge } from "~/components/game/TournamentBadge";
 
 type TeamLike = {
   id: string;
@@ -277,91 +278,11 @@ function getSectionStyle(tone: SectionTone) {
   }
 }
 
-function TeamLogo({ team }: { team: TeamLike }) {
-  const logoSrc = getTeamLogoSrc(team);
-
-  return (
-    <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--border)] bg-[var(--panel)]">
-      {logoSrc ? (
-        <img
-          src={logoSrc}
-          alt={team.name}
-          className="h-5 w-5 object-contain"
-          loading="lazy"
-          decoding="async"
-        />
-      ) : (
-        <span className="text-[9px] font-black text-[var(--text-soft)]">
-          {(team.tla || team.shortName || team.name).slice(0, 3).toUpperCase()}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function TeamLine({
-  team,
-  align = "left",
-}: {
-  team: TeamLike;
-  align?: "left" | "right";
-}) {
-  return (
-    <div
-      className={[
-        "flex min-w-0 items-center gap-2",
-        align === "right" ? "justify-end text-right" : "",
-      ].join(" ")}
-    >
-      {align === "left" && <TeamLogo team={team} />}
-
-      <div className="min-w-0">
-        <div className="truncate text-sm font-black text-[var(--text)]">
-          {team.shortName || team.name}
-        </div>
-
-        <div className="truncate text-[10px] text-[var(--muted)]">
-          {team.name}
-        </div>
-      </div>
-
-      {align === "right" && <TeamLogo team={team} />}
-    </div>
-  );
-}
-
 function MatchMeta({ match }: { match: MatchItem }) {
   const label = getTournamentSubLabel(match);
-  const logoSrc = getTournamentLogoSrc(match.tournament);
 
   return (
-    <div className="flex min-w-0 items-center gap-2 text-[10px] text-[var(--muted)]">
-      {match.tournament ? (
-        <div className="flex min-w-0 items-center gap-1.5">
-          <div className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/90 ring-1 ring-black/5">
-            {logoSrc ? (
-              <img
-                src={logoSrc}
-                alt={match.tournament.name}
-                className="h-3.5 w-3.5 object-contain"
-                loading="lazy"
-                decoding="async"
-              />
-            ) : (
-              <span className="text-[8px] font-black text-black/70">
-                {match.tournament.name.slice(0, 2).toUpperCase()}
-              </span>
-            )}
-          </div>
-
-          <span className="max-w-[140px] truncate">
-            {match.tournament.name}
-          </span>
-        </div>
-      ) : null}
-
-      {label ? <span className="truncate opacity-70">• {label}</span> : null}
-    </div>
+    <TournamentBadge tournament={match.tournament} label={label} />
   );
 }
 
@@ -411,24 +332,24 @@ function MatchRow({
         featured ? "shadow-lg shadow-black/10" : "",
       ].join(" ")}
     >
-      <div className="mb-3 flex items-center justify-between gap-3">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <MatchMeta match={match} />
 
-        <div className="shrink-0 text-right text-[10px] font-bold text-[var(--muted)]">
+        <div className="shrink-0 text-left text-[10px] font-bold text-[var(--muted)] sm:text-right">
           {formatMatchDate(match.startTime)} ·{" "}
           {formatMatchTime(match.startTime)}
         </div>
       </div>
 
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5 sm:gap-2">
         <TeamLine team={match.homeTeam} />
 
-        <div className="flex min-w-[82px] flex-col items-center">
+        <div className="flex min-w-[66px] flex-col items-center sm:min-w-[82px]">
           <div
             className={[
               "font-black tracking-tight",
               style.score,
-              featured ? "text-3xl sm:text-4xl" : "text-2xl",
+              featured ? "text-2xl sm:text-4xl" : "text-xl sm:text-2xl",
             ].join(" ")}
           >
             {hasScore

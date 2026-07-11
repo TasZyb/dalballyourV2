@@ -43,6 +43,17 @@ function formatDate(value: Date | null) {
   }).format(value);
 }
 
+function formatDateTime(value: Date | null) {
+  if (!value) return "—";
+
+  return new Intl.DateTimeFormat("uk-UA", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
+}
+
 export async function action({ request }: ActionFunctionArgs) {
   await requireUser(request);
 
@@ -81,6 +92,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     correctResults,
     wrongPredictions,
     activeGamesCount,
+    activeGames,
+    recentPredictions,
   ] = await prisma.$transaction([
     prisma.user.findUnique({
       where: { id: authUser.id },
@@ -166,6 +179,89 @@ export async function loader({ request }: LoaderFunctionArgs) {
         status: "ACTIVE",
       },
     }),
+
+    prisma.gameMember.findMany({
+      where: {
+        userId: authUser.id,
+        status: "ACTIVE",
+      },
+      orderBy: {
+        joinedAt: "desc",
+      },
+      take: 4,
+      select: {
+        role: true,
+        joinedAt: true,
+        coinsEarned: true,
+        game: {
+          select: {
+            id: true,
+            name: true,
+            mode: true,
+            status: true,
+            linkedTournament: {
+              select: {
+                name: true,
+              },
+            },
+            favoriteTeam: {
+              select: {
+                name: true,
+                shortName: true,
+                logo: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+
+    prisma.prediction.findMany({
+      where: { userId: authUser.id },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+      select: {
+        id: true,
+        predictedHome: true,
+        predictedAway: true,
+        pointsAwarded: true,
+        weightedPointsAwarded: true,
+        wasExact: true,
+        wasOutcomeOnly: true,
+        updatedAt: true,
+        game: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        match: {
+          select: {
+            startTime: true,
+            status: true,
+            homeScore: true,
+            awayScore: true,
+            tournament: {
+              select: {
+                name: true,
+              },
+            },
+            homeTeam: {
+              select: {
+                name: true,
+                shortName: true,
+              },
+            },
+            awayTeam: {
+              select: {
+                name: true,
+                shortName: true,
+              },
+            },
+          },
+        },
+      },
+    }),
   ]);
 
   if (!user) {
@@ -207,40 +303,50 @@ export async function loader({ request }: LoaderFunctionArgs) {
       lastPredictionAtLabel: formatDate(predictionAgg._max.submittedAt),
       activeGamesCount,
     },
+    activeGames: activeGames.map((membership) => ({
+      ...membership,
+      joinedAtLabel: formatDate(membership.joinedAt),
+    })),
+    recentPredictions: recentPredictions.map((prediction) => ({
+      ...prediction,
+      updatedAtLabel: formatDateTime(prediction.updatedAt),
+      matchStartLabel: formatDateTime(prediction.match.startTime),
+    })),
   });
 }
 
 export default function MePage() {
-  const { theme, user, stats } = useLoaderData<typeof loader>();
+  const { theme, user, stats, activeGames, recentPredictions } =
+    useLoaderData<typeof loader>();
   const displayName = getDisplayName(user);
 
   return (
-    <div className="theme-page min-h-screen">
-      <main className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8">
-        <header className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap gap-2">
+    <div className="theme-page min-h-screen overflow-x-hidden">
+      <main className="mx-auto w-full max-w-6xl px-3 py-4 sm:px-6 sm:py-8">
+        <header className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-center lg:justify-between">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
             <ActionLink to="/">← На головну</ActionLink>
             <ActionLink to="/predict" primary>
               Зробити прогноз
             </ActionLink>
-            <ActionLink to="/courses">Курси</ActionLink>
+            <ActionLink to="/me/stats">Статистика</ActionLink>
             <ActionLink to="/me/history">Історія матчів</ActionLink>
           </div>
 
           <ThemePicker currentTheme={theme} />
 
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:justify-end">
             <ActionLink to="/me/edit">Редагувати</ActionLink>
 
-            <Form method="post" action="/logout">
+            <Form method="post" action="/logout" className="min-w-0">
               <DangerButton>Вийти</DangerButton>
             </Form>
           </div>
         </header>
 
-        <section className="theme-panel overflow-hidden rounded-[2rem]">
+        <section className="theme-panel overflow-hidden rounded-[1.5rem] sm:rounded-[2rem]">
           <div
-            className="h-28 border-b border-[var(--border)] bg-[var(--panel-strong)] sm:h-36"
+            className="h-24 border-b border-[var(--border)] bg-[var(--panel-strong)] sm:h-36"
             style={
               user.profileBanner
                 ? {
@@ -252,21 +358,21 @@ export default function MePage() {
             }
           />
 
-          <div className="p-5 sm:p-7">
-            <div className="-mt-14 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div className="flex min-w-0 items-end gap-4">
+          <div className="p-4 sm:p-7">
+            <div className="-mt-12 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="flex min-w-0 items-end gap-3 sm:gap-4">
                 <Avatar user={user} displayName={displayName} />
 
                 <div className="min-w-0 pb-1">
-                  <div className="theme-muted text-xs font-semibold uppercase tracking-[0.25em]">
+                  <div className="theme-muted text-[0.65rem] font-semibold uppercase tracking-[0.18em] sm:text-xs sm:tracking-[0.25em]">
                     Профіль гравця
                   </div>
 
-                  <h1 className="mt-2 truncate text-3xl font-black tracking-tight text-[var(--text)] sm:text-4xl">
+                  <h1 className="mt-1 line-clamp-2 break-words text-2xl font-black tracking-tight text-[var(--text)] sm:mt-2 sm:truncate sm:text-4xl">
                     {displayName}
                   </h1>
 
-                  <p className="theme-text-soft mt-1 truncate text-sm">
+                  <p className="theme-text-soft mt-1 break-all text-xs sm:truncate sm:text-sm">
                     {user.email}
                   </p>
                 </div>
@@ -296,8 +402,16 @@ export default function MePage() {
           </div>
         </section>
 
-        <section className="mt-5 grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
-          <Panel title="Статистика прогнозів">
+        <section className="mt-5 grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+          <Panel
+            title="Форма прогнозиста"
+            eyebrow="Поточний профіль"
+            action={
+              <ActionLink to="/me/stats" compact>
+                Детально
+              </ActionLink>
+            }
+          >
             <div className="grid gap-3 sm:grid-cols-2">
               <SmallStat label="Базові очки" value={stats.rawPoints} />
               <SmallStat
@@ -328,7 +442,7 @@ export default function MePage() {
             </div>
           </Panel>
 
-          <Panel title="Профіль">
+          <Panel title="Дані профілю" eyebrow="Акаунт">
             <div className="space-y-3">
               <ProfileRow
                 label="Улюблена команда"
@@ -351,8 +465,8 @@ export default function MePage() {
           </Panel>
         </section>
 
-        <section className="mt-5 grid gap-5 lg:grid-cols-2">
-          <Panel title="Гаманець">
+        <section className="mt-5 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
+          <Panel title="Гаманець" eyebrow="Монети">
             <div className="grid gap-3 sm:grid-cols-3">
               <SmallStat label="Баланс" value={user.wallet?.balance ?? 0} />
               <SmallStat
@@ -366,12 +480,62 @@ export default function MePage() {
             </div>
 
             <p className="theme-text-soft mt-4 text-sm leading-6">
-              Тут можна показувати монети, бонуси за точні рахунки, нагороди за
-              раунди або майбутній внутрішній магазин.
+              Монети вже привʼязані до прогнозів і нагород у грі. Баланс
+              оновлюється після підрахунку результатів.
             </p>
           </Panel>
 
-          <Panel title="Швидкі дії">
+          <Panel title="Активні ігри" eyebrow="Ліги">
+            <div className="space-y-3">
+              {activeGames.length > 0 ? (
+                activeGames.map((membership) => (
+                  <GameRow key={membership.game.id} membership={membership} />
+                ))
+              ) : (
+                <EmptyState
+                  title="Ти ще не в активній грі"
+                  text="Створи лігу або приєднайся за кодом, щоб прогнози почали збиратися в таблиці."
+                />
+              )}
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <ActionLink to="/create" primary>
+                Створити гру
+              </ActionLink>
+              <ActionLink to="/join">Приєднатись</ActionLink>
+            </div>
+          </Panel>
+        </section>
+
+        <section className="mt-5 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+          <Panel
+            title="Останні прогнози"
+            eyebrow="Матчі"
+            action={
+              <ActionLink to="/me/history" compact>
+                Уся історія
+              </ActionLink>
+            }
+          >
+            <div className="space-y-3">
+              {recentPredictions.length > 0 ? (
+                recentPredictions.map((prediction) => (
+                  <PredictionRow
+                    key={prediction.id}
+                    prediction={prediction}
+                  />
+                ))
+              ) : (
+                <EmptyState
+                  title="Ще немає прогнозів"
+                  text="Обери матч у своїй грі й залиш перший рахунок."
+                />
+              )}
+            </div>
+          </Panel>
+
+          <Panel title="Швидкі дії" eyebrow="Навігація">
             <div className="grid gap-3 sm:grid-cols-2">
               <ActionLink to="/predict" primary>
                 Зробити прогноз
@@ -393,7 +557,9 @@ function ThemePicker({ currentTheme }: { currentTheme: AppTheme }) {
     useState<AppTheme>(currentTheme);
 
   useEffect(() => {
-    if (!fetcher.data?.ok || !fetcher.data.theme) return;
+    if (!fetcher.data || !fetcher.data.ok || !("theme" in fetcher.data)) {
+      return;
+    }
 
     const nextTheme = fetcher.data.theme;
     setOptimisticTheme(nextTheme);
@@ -412,7 +578,7 @@ function ThemePicker({ currentTheme }: { currentTheme: AppTheme }) {
   }, [fetcher.data]);
 
   return (
-    <div className="theme-panel flex flex-wrap items-center gap-1 rounded-2xl p-1">
+    <div className="theme-panel grid w-full grid-cols-5 gap-1 rounded-2xl p-1 sm:flex sm:w-auto sm:flex-wrap">
       {THEMES.map((theme) => {
         const active = optimisticTheme === theme.value;
 
@@ -429,7 +595,7 @@ function ThemePicker({ currentTheme }: { currentTheme: AppTheme }) {
               type="submit"
               title={theme.label}
               className={[
-                "rounded-xl px-3 py-2 text-xs font-black transition",
+                "w-full rounded-xl px-2 py-2 text-xs font-black transition sm:px-3",
                 active
                   ? "theme-primary-button"
                   : "text-[var(--text-soft)] hover:bg-[var(--panel-strong)] hover:text-[var(--text)]",
@@ -458,13 +624,13 @@ function Avatar({
         alt={displayName}
         loading="lazy"
         decoding="async"
-        className="h-24 w-24 shrink-0 rounded-[2rem] border-4 border-[var(--bg)] bg-[var(--panel)] object-cover shadow-xl"
+        className="h-20 w-20 shrink-0 rounded-[1.5rem] border-4 border-[var(--bg)] bg-[var(--panel)] object-cover shadow-xl sm:h-24 sm:w-24 sm:rounded-[2rem]"
       />
     );
   }
 
   return (
-    <div className="theme-card-highlight flex h-24 w-24 shrink-0 items-center justify-center rounded-[2rem] border-4 border-[var(--bg)] text-3xl font-black shadow-xl">
+    <div className="theme-card-highlight flex h-20 w-20 shrink-0 items-center justify-center rounded-[1.5rem] border-4 border-[var(--bg)] text-2xl font-black shadow-xl sm:h-24 sm:w-24 sm:rounded-[2rem] sm:text-3xl">
       {displayName.slice(0, 1).toUpperCase()}
     </div>
   );
@@ -474,17 +640,22 @@ function ActionLink({
   to,
   children,
   primary = false,
+  compact = false,
 }: {
   to: string;
   children: ReactNode;
   primary?: boolean;
+  compact?: boolean;
 }) {
   return (
     <Link
       to={to}
       prefetch="intent"
       className={[
-        "inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition",
+        "min-w-0 items-center justify-center rounded-2xl text-center text-sm font-semibold leading-tight transition",
+        compact ? "inline-flex" : "flex",
+        compact ? "px-3 py-2" : "px-4 py-3",
+        "w-full sm:w-auto",
         primary ? "theme-primary-button" : "theme-button",
       ].join(" ")}
     >
@@ -497,7 +668,7 @@ function DangerButton({ children }: { children: ReactNode }) {
   return (
     <button
       type="submit"
-      className="theme-danger-bg inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition hover:opacity-90"
+      className="theme-danger-bg flex w-full items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition hover:opacity-90 sm:w-auto"
     >
       {children}
     </button>
@@ -506,7 +677,7 @@ function DangerButton({ children }: { children: ReactNode }) {
 
 function InfoPill({ children }: { children: ReactNode }) {
   return (
-    <span className="theme-card-highlight rounded-full px-3 py-1 text-[var(--text-soft)]">
+    <span className="theme-card-highlight max-w-full break-words rounded-full px-3 py-1 text-[var(--text-soft)]">
       {children}
     </span>
   );
@@ -514,32 +685,52 @@ function InfoPill({ children }: { children: ReactNode }) {
 
 function BigStat({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="theme-card-highlight rounded-3xl p-4">
+    <div className="theme-card-highlight rounded-[1.25rem] p-3 sm:rounded-3xl sm:p-4">
       <div className="theme-muted text-xs">{label}</div>
-      <div className="mt-2 text-3xl font-black text-[var(--text)]">{value}</div>
+      <div className="mt-1 text-2xl font-black text-[var(--text)] sm:mt-2 sm:text-3xl">
+        {value}
+      </div>
     </div>
   );
 }
 
 function SmallStat({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="theme-card-highlight rounded-2xl p-4">
+    <div className="theme-card-highlight rounded-[1.25rem] p-3 sm:rounded-2xl sm:p-4">
       <div className="theme-text-soft text-sm">{label}</div>
-      <div className="mt-2 text-2xl font-black text-[var(--text)]">{value}</div>
+      <div className="mt-1 text-2xl font-black text-[var(--text)] sm:mt-2">
+        {value}
+      </div>
     </div>
   );
 }
 
 function Panel({
   title,
+  eyebrow,
+  action,
   children,
 }: {
   title: string;
+  eyebrow?: string;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <section className="theme-panel rounded-[2rem] p-5 sm:p-6">
-      <h2 className="mb-4 text-xl font-black text-[var(--text)]">{title}</h2>
+    <section className="theme-panel min-w-0 rounded-[1.5rem] p-4 sm:rounded-[2rem] sm:p-6">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          {eyebrow && (
+            <div className="theme-muted text-xs font-semibold uppercase tracking-[0.18em] sm:tracking-[0.22em]">
+              {eyebrow}
+            </div>
+          )}
+          <h2 className="mt-1 break-words text-lg font-black text-[var(--text)] sm:text-xl">
+            {title}
+          </h2>
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </div>
       {children}
     </section>
   );
@@ -553,11 +744,199 @@ function ProfileRow({
   value: ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] py-3 last:border-b-0">
+    <div className="flex flex-col gap-1 border-b border-[var(--border)] py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <div className="theme-text-soft text-sm">{label}</div>
-      <div className="text-right text-sm font-bold text-[var(--text)]">
+      <div className="break-words text-sm font-bold text-[var(--text)] sm:text-right">
         {value}
       </div>
+    </div>
+  );
+}
+
+function TeamMark({
+  team,
+}: {
+  team: { name: string; shortName: string | null; logo: string | null } | null;
+}) {
+  if (!team) return null;
+
+  if (team.logo) {
+    return (
+      <img
+        src={team.logo}
+        alt={team.name}
+        loading="lazy"
+        decoding="async"
+        className="h-8 w-8 rounded-xl bg-[var(--panel-strong)] object-contain p-1"
+      />
+    );
+  }
+
+  return (
+    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--panel-strong)] text-xs font-black text-[var(--text)]">
+      {(team.shortName || team.name).slice(0, 2).toUpperCase()}
+    </div>
+  );
+}
+
+function GameRow({
+  membership,
+}: {
+  membership: {
+    role: string;
+    coinsEarned: number;
+    joinedAtLabel: string;
+    game: {
+      id: string;
+      name: string;
+      mode: string;
+      status: string;
+      linkedTournament: { name: string } | null;
+      favoriteTeam: {
+        name: string;
+        shortName: string | null;
+        logo: string | null;
+      } | null;
+    };
+  };
+}) {
+  return (
+    <Link
+      to={`/games/${membership.game.id}`}
+      prefetch="intent"
+      className="theme-card-highlight flex min-w-0 flex-col gap-3 rounded-[1.25rem] p-3 transition hover:border-[var(--border-strong)] sm:flex-row sm:items-center sm:justify-between sm:rounded-2xl"
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        <TeamMark team={membership.game.favoriteTeam} />
+        <div className="min-w-0">
+          <div className="line-clamp-2 break-words text-sm font-black text-[var(--text)] sm:truncate">
+            {membership.game.name}
+          </div>
+          <div className="theme-text-soft mt-1 line-clamp-2 break-words text-xs sm:truncate">
+            {membership.game.linkedTournament?.name || membership.game.mode} ·{" "}
+            з {membership.joinedAtLabel}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex shrink-0 items-center justify-between gap-3 text-left sm:block sm:text-right">
+        <div className="text-xs font-black text-[var(--accent-text)]">
+          {membership.role}
+        </div>
+        <div className="theme-muted mt-1 text-xs">
+          {membership.coinsEarned} монет
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function getPredictionTone(prediction: {
+  wasExact: boolean;
+  wasOutcomeOnly: boolean;
+}) {
+  if (prediction.wasExact) return "Точний";
+  if (prediction.wasOutcomeOnly) return "Результат";
+  return "Очікує";
+}
+
+function PredictionRow({
+  prediction,
+}: {
+  prediction: {
+    predictedHome: number;
+    predictedAway: number;
+    pointsAwarded: number;
+    weightedPointsAwarded: number;
+    wasExact: boolean;
+    wasOutcomeOnly: boolean;
+    updatedAtLabel: string;
+    matchStartLabel: string;
+    game: { id: string; name: string };
+    match: {
+      status: string;
+      homeScore: number | null;
+      awayScore: number | null;
+      tournament: { name: string };
+      homeTeam: { name: string; shortName: string | null };
+      awayTeam: { name: string; shortName: string | null };
+    };
+  };
+}) {
+  const homeName =
+    prediction.match.homeTeam.shortName || prediction.match.homeTeam.name;
+  const awayName =
+    prediction.match.awayTeam.shortName || prediction.match.awayTeam.name;
+
+  return (
+    <Link
+      to={`/games/${prediction.game.id}`}
+      prefetch="intent"
+      className="theme-card-highlight block min-w-0 rounded-[1.25rem] p-3 transition hover:border-[var(--border-strong)] sm:rounded-2xl sm:p-4"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="theme-muted line-clamp-2 break-words text-xs font-semibold uppercase tracking-[0.14em] sm:truncate sm:tracking-[0.18em]">
+            {prediction.match.tournament.name}
+          </div>
+          <div className="mt-2 line-clamp-2 break-words text-base font-black text-[var(--text)] sm:truncate">
+            {homeName} <span className="theme-muted">vs</span> {awayName}
+          </div>
+          <div className="theme-text-soft mt-1 break-words text-xs">
+            {prediction.game.name} · {prediction.matchStartLabel}
+          </div>
+        </div>
+
+        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+          <ScoreBadge>
+            {prediction.predictedHome}:{prediction.predictedAway}
+          </ScoreBadge>
+          <ScoreBadge muted>{getPredictionTone(prediction)}</ScoreBadge>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+        <InfoPill>
+          Очки: {prediction.weightedPointsAwarded || prediction.pointsAwarded}
+        </InfoPill>
+        {prediction.match.homeScore !== null &&
+          prediction.match.awayScore !== null && (
+            <InfoPill>
+              Фінал: {prediction.match.homeScore}:{prediction.match.awayScore}
+            </InfoPill>
+          )}
+        <InfoPill>Оновлено: {prediction.updatedAtLabel}</InfoPill>
+      </div>
+    </Link>
+  );
+}
+
+function ScoreBadge({
+  children,
+  muted = false,
+}: {
+  children: ReactNode;
+  muted?: boolean;
+}) {
+  return (
+    <span
+      className={[
+        "whitespace-nowrap rounded-2xl px-3 py-2 text-sm font-black",
+        muted
+          ? "bg-[var(--panel-strong)] text-[var(--text-soft)]"
+          : "bg-[var(--accent-soft)] text-[var(--accent-text)]",
+      ].join(" ")}
+    >
+      {children}
+    </span>
+  );
+}
+
+function EmptyState({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--card-highlight)] p-4">
+      <div className="text-sm font-black text-[var(--text)]">{title}</div>
+      <div className="theme-text-soft mt-1 text-sm leading-6">{text}</div>
     </div>
   );
 }
