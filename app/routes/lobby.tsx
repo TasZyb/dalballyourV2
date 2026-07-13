@@ -8,7 +8,7 @@ import {
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "react-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { prisma } from "~/lib/db.server";
 import { getCurrentUser } from "~/lib/auth.server";
 import { getGuestPreviewGame } from "~/lib/guest-preview.server";
@@ -18,7 +18,9 @@ type NextMatch = {
   startTime: string;
   formattedStartTime: string;
   homeTeam: string;
+  homeTeamName: string;
   awayTeam: string;
+  awayTeamName: string;
   status: string;
 };
 
@@ -49,6 +51,7 @@ type LobbyStats = {
   careerGamesCount: number;
   totalLiveMatches: number;
   totalPendingPredictions: number;
+  totalSubmittedPredictions: number;
   totalExactHits: number;
 };
 
@@ -75,18 +78,6 @@ function formatMatchDate(value: Date | string) {
   }).format(new Date(value));
 }
 
-function getSoonestGame(games: LobbyGame[]) {
-  return (
-    [...games]
-      .filter((game) => game.nextMatch)
-      .sort((a, b) => {
-        const aTime = new Date(a.nextMatch!.startTime).getTime();
-        const bTime = new Date(b.nextMatch!.startTime).getTime();
-        return aTime - bTime;
-      })[0] ?? null
-  );
-}
-
 export async function loader({ request }: LoaderFunctionArgs) {
   const currentUser = await getCurrentUser(request);
 
@@ -103,6 +94,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         careerGamesCount: 0,
         totalLiveMatches: 0,
         totalPendingPredictions: 0,
+        totalSubmittedPredictions: 0,
         totalExactHits: 0,
       } satisfies LobbyStats,
     });
@@ -219,9 +211,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
             homeTeam:
               nextMatchRaw.match.homeTeam.shortName ||
               nextMatchRaw.match.homeTeam.name,
+            homeTeamName: nextMatchRaw.match.homeTeam.name,
             awayTeam:
               nextMatchRaw.match.awayTeam.shortName ||
               nextMatchRaw.match.awayTeam.name,
+            awayTeamName: nextMatchRaw.match.awayTeam.name,
             status: nextMatchRaw.match.status,
           }
         : null,
@@ -247,6 +241,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
       totalLiveMatches: games.reduce((sum, game) => sum + game.liveMatchesCount, 0),
       totalPendingPredictions: games.reduce(
         (sum, game) => sum + game.pendingPredictionsCount,
+        0
+      ),
+      totalSubmittedPredictions: games.reduce(
+        (sum, game) => sum + game.submittedPredictionsCount,
         0
       ),
       totalExactHits: games.reduce((sum, game) => sum + game.exactHitsCount, 0),
@@ -347,63 +345,398 @@ export default function LobbyPage() {
     useLoaderData<typeof loader>();
 
   const [activeTab, setActiveTab] = useState<LobbyTab>("leagues");
-
-  const soonestLeagueGame = useMemo(
-    () => getSoonestGame(leagueGames),
-    [leagueGames]
-  );
-
-  const soonestCareerGame = useMemo(
-    () => getSoonestGame(careerGames),
-    [careerGames]
-  );
+  const [statsOpen, setStatsOpen] = useState(false);
 
   if (!currentUser) {
     return <GuestLobby guestPreviewGame={guestPreviewGame} />;
   }
 
+  const visibleGames = activeTab === "solo" ? careerGames : leagueGames;
+  const firstGame = visibleGames[0] ?? leagueGames[0] ?? careerGames[0] ?? null;
+
   return (
-    <main className="theme-page relative min-h-screen overflow-hidden px-3 py-3 sm:px-5 sm:py-5">
+    <main className="theme-page relative min-h-screen overflow-hidden px-3 pb-28 pt-4 sm:px-5 sm:py-6">
       <LobbyBackground />
 
-      <div className="relative mx-auto flex w-full max-w-6xl flex-col gap-4">
-        <LobbyHeader currentUser={currentUser} />
+      <div className="relative mx-auto flex w-full max-w-5xl flex-col gap-4">
+        <FreshLobbyHeader currentUser={currentUser} stats={stats} />
 
-        <LobbyTabs activeTab={activeTab} onChange={setActiveTab} />
+        <FreshLobbyTabs activeTab={activeTab} onChange={setActiveTab} />
 
-        {activeTab === "leagues" ? (
-          <GamesTab
-            type="league"
-            title="Твої ліги"
-            emptyTitle="Ще немає дружніх ліг"
-            emptyText="Створи лігу або приєднайся по коду."
-            createHref="/create/league"
-            createLabel="Нова ліга"
-            soonestGame={soonestLeagueGame}
-            games={leagueGames}
-          />
+        {activeTab === "leagues" || activeTab === "solo" ? (
+          <>
+            <FreshLeagueList
+              type={activeTab === "solo" ? "solo" : "league"}
+              games={visibleGames}
+            />
+
+            <LobbyStatsPanel
+              stats={stats}
+              games={visibleGames}
+              expanded={statsOpen}
+              onToggle={() => setStatsOpen((value) => !value)}
+            />
+          </>
         ) : null}
 
-        {activeTab === "solo" ? (
-          <GamesTab
-            type="solo"
-            title="Соло кар’єра"
-            emptyTitle="Ще немає кар’єри"
-            emptyText="Режим у процесі розробки. Скоро тут зʼявиться карʼєра за улюблений клуб."
-            createHref="/create/career"
-            createLabel="Почати кар’єру"
-            soonestGame={soonestCareerGame}
-            games={careerGames}
-          />
+        {activeTab === "create" ? (
+          <div className="theme-panel rounded-[1.75rem] p-3 sm:p-4">
+            <CreateTab />
+          </div>
         ) : null}
-
-        {activeTab === "create" ? <CreateTab /> : null}
 
         {activeTab === "rules" ? <RulesTab /> : null}
 
-        <CompactOverview stats={stats} />
+        <FreshBottomNav game={firstGame} />
       </div>
     </main>
+  );
+}
+
+function FreshLobbyHeader({
+  currentUser,
+  stats,
+}: {
+  currentUser: {
+    displayName?: string | null;
+    name?: string | null;
+    email?: string | null;
+  };
+  stats: LobbyStats;
+}) {
+  const displayName =
+    currentUser.displayName || currentUser.name || currentUser.email || "Гравець";
+  const xp =
+    stats.totalSubmittedPredictions * 90 +
+    stats.totalExactHits * 180 +
+    stats.leagueGamesCount * 120 +
+    stats.careerGamesCount * 80;
+  const xpGoal = 3000;
+  const level = Math.max(1, Math.floor(xp / xpGoal) + 1);
+  const currentXp = xp % xpGoal;
+  const progress = Math.min(100, Math.round((currentXp / xpGoal) * 100));
+
+  return (
+    <header className="grid grid-cols-[auto_1fr_auto] items-center gap-3 pt-1 sm:gap-5">
+      <LobbyShieldMark />
+
+      <div className="min-w-0">
+        <div className="theme-accent text-sm font-black uppercase tracking-[0.18em]">
+          Lobby
+        </div>
+
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-3">
+          <h1 className="truncate text-3xl font-black leading-none sm:text-5xl">
+            Predict League
+          </h1>
+          <span className="theme-card-highlight rounded-lg px-3 py-1 text-sm font-black">
+            Lv. {level}
+          </span>
+        </div>
+
+        <div className="mt-4 flex items-center gap-3">
+          <span className="theme-accent-bg flex h-8 w-8 items-center justify-center rounded-full">
+            <IconStar className="h-5 w-5" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="theme-accent text-sm font-black">
+              {currentXp.toLocaleString("uk-UA")}{" "}
+              <span className="theme-muted">/ {xpGoal.toLocaleString("uk-UA")} XP</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--panel-strong)]">
+              <div
+                className="h-full rounded-full bg-[var(--accent)]"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+        <Link
+          to="/me"
+          className="theme-button hidden h-14 min-w-14 items-center justify-center rounded-2xl px-4 text-sm font-black sm:inline-flex sm:h-16 sm:min-w-16"
+          title={displayName}
+          aria-label="Профіль"
+        >
+          <IconUser className="h-8 w-8" />
+        </Link>
+
+        <Form method="post" action="/logout">
+          <button
+            type="submit"
+            className="theme-button flex h-12 w-12 items-center justify-center rounded-2xl sm:h-16 sm:w-16"
+            aria-label="Вийти"
+          >
+            <IconLogout className="h-7 w-7" />
+          </button>
+        </Form>
+      </div>
+    </header>
+  );
+}
+
+function LobbyShieldMark() {
+  return (
+    <Link
+      to="/"
+      className="theme-panel-strong relative flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center overflow-hidden rounded-[1.35rem] sm:h-28 sm:w-28 sm:rounded-[1.75rem]"
+      aria-label="Lobby"
+    >
+      <PitchSvg className="absolute inset-[-45%] h-[190%] w-[190%] opacity-10" />
+      <div className="theme-accent-bg relative flex h-11 w-11 items-center justify-center rounded-2xl sm:h-16 sm:w-16">
+        <IconBall className="h-7 w-7 sm:h-10 sm:w-10" />
+      </div>
+    </Link>
+  );
+}
+
+function FreshLobbyTabs({
+  activeTab,
+  onChange,
+}: {
+  activeTab: LobbyTab;
+  onChange: (tab: LobbyTab) => void;
+}) {
+  const tabs: {
+    id: LobbyTab;
+    label: string;
+    icon: React.ReactNode;
+  }[] = [
+    { id: "leagues", label: "Ліги", icon: <IconTrophy /> },
+    { id: "solo", label: "Соло", icon: <IconStar /> },
+    { id: "create", label: "Створити", icon: <IconPlus /> },
+    { id: "rules", label: "Правила", icon: <IconBook /> },
+  ];
+
+  return (
+    <nav className="theme-panel grid grid-cols-4 gap-1 rounded-[1.35rem] p-1.5 sm:gap-2 sm:rounded-[1.5rem] sm:p-2">
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.id;
+
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => onChange(tab.id)}
+            className={[
+              "flex min-h-14 flex-col items-center justify-center gap-1 rounded-[1rem] px-1.5 py-2 text-[10px] font-black transition-all sm:min-h-20 sm:gap-2 sm:rounded-[1.15rem] sm:px-3 sm:text-sm",
+              isActive
+                ? "theme-accent-bg"
+                : "theme-muted hover:bg-[var(--panel-strong)] hover:text-[var(--text)]",
+            ].join(" ")}
+          >
+            <span className="h-5 w-5 sm:h-7 sm:w-7">{tab.icon}</span>
+            <span>{tab.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function FreshLeagueList({
+  type,
+  games,
+}: {
+  type: "league" | "solo";
+  games: LobbyGame[];
+}) {
+  const createHref = type === "solo" ? "/create/career" : "/create/league";
+
+  return (
+    <section className="theme-panel rounded-[1.75rem] p-4 sm:p-5">
+      <div className="mb-5 flex items-center justify-between gap-3 px-1">
+        <div className="flex items-center gap-3">
+          <div className="theme-accent-bg flex h-10 w-10 items-center justify-center rounded-2xl">
+            <IconTrophy className="h-6 w-6" />
+          </div>
+          <h2 className="text-xl font-black">
+            {type === "solo" ? "Твоя кар'єра" : "Твої ігри"}
+          </h2>
+        </div>
+
+        <Link
+          to={createHref}
+          className="theme-button inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-xs font-black sm:text-sm"
+        >
+          <IconPlus className="h-5 w-5" />
+          {type === "solo" ? "Нова кар'єра" : "Нова ліга"}
+        </Link>
+      </div>
+
+      {games.length ? (
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+          {games.map((game) => (
+            <GameIconTile key={game.id} game={game} type={type} />
+          ))}
+        </div>
+      ) : (
+        <EmptyTabState
+          title={type === "solo" ? "Ще немає кар'єри" : "Ще немає ліг"}
+          text={
+            type === "solo"
+              ? "Почни особистий режим і прив'яжи його до улюбленого клубу."
+              : "Створи лігу для друзів або приєднайся по коду."
+          }
+          href={createHref}
+        />
+      )}
+    </section>
+  );
+}
+
+function GameIconTile({
+  game,
+  type,
+}: {
+  game: LobbyGame;
+  type: "league" | "solo";
+}) {
+  const initials = game.name
+    .split(" ")
+    .map((word) => word[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  const subtitle =
+    type === "solo"
+      ? game.favoriteTeamName || "Solo"
+      : game.linkedTournamentName || `${game.membersCount} гравців`;
+  const hasAttention = game.liveMatchesCount > 0 || game.pendingPredictionsCount > 0;
+
+  return (
+    <Link
+      to={`/games/${game.id}`}
+      className="group flex min-w-0 flex-col items-center gap-2 rounded-[1.25rem] p-2 text-center transition hover:bg-[var(--panel-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+    >
+      <div className="theme-card-highlight relative flex aspect-square w-full max-w-[5.6rem] items-center justify-center overflow-hidden rounded-[1.35rem] transition-transform group-hover:-translate-y-0.5 sm:max-w-[6.5rem]">
+        {type === "solo" && game.favoriteTeamLogo ? (
+          <img
+            src={game.favoriteTeamLogo}
+            alt={game.favoriteTeamName || game.name}
+            className="h-2/3 w-2/3 object-contain"
+            loading="lazy"
+          />
+        ) : game.avatarUrl ? (
+          <img
+            src={game.avatarUrl}
+            alt={game.name}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="theme-accent-bg flex h-12 w-12 items-center justify-center rounded-2xl text-sm font-black sm:h-14 sm:w-14">
+            {initials || <IconTrophy className="h-8 w-8" />}
+          </div>
+        )}
+
+        {hasAttention ? (
+          <span className="absolute right-2 top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[10px] font-black text-[var(--accent-button-text)]">
+            {game.liveMatchesCount > 0 ? "L" : game.pendingPredictionsCount}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="min-w-0 max-w-full">
+        <div className="truncate text-sm font-black leading-tight sm:text-base">
+          {game.name || initials}
+        </div>
+        <div className="theme-muted mt-0.5 truncate text-[10px] font-bold uppercase sm:text-xs">
+          {subtitle}
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function LobbyStatsPanel({
+  stats,
+  games,
+  expanded,
+  onToggle,
+}: {
+  stats: LobbyStats;
+  games: LobbyGame[];
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const activeMatches = games.reduce((sum, game) => sum + game.liveMatchesCount, 0);
+  const pendingPredictions = games.reduce(
+    (sum, game) => sum + game.pendingPredictionsCount,
+    0
+  );
+  const finishedMatches = games.reduce(
+    (sum, game) => sum + game.finishedMatchesCount,
+    0
+  );
+
+  return (
+    <section className="theme-panel rounded-[1.75rem] p-4 sm:p-5">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
+        <div>
+          <div className="theme-muted text-[10px] font-black uppercase tracking-[0.18em]">
+            Статистика
+          </div>
+          <h2 className="mt-1 text-xl font-black">Твоя активність у грі</h2>
+          <div className="theme-muted mt-1 text-sm font-semibold">
+            {games.length} ігор · {pendingPredictions} прогнозів очікують
+          </div>
+        </div>
+        <div className="theme-accent-bg flex h-10 w-10 items-center justify-center rounded-2xl">
+          <IconArrow
+            className={[
+              "h-5 w-5 transition-transform",
+              expanded ? "-rotate-90" : "rotate-90",
+            ].join(" ")}
+          />
+        </div>
+      </button>
+
+      {expanded ? (
+        <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <StatPill icon={<IconLive />} label="Live" value={activeMatches} />
+          <StatPill icon={<IconClock />} label="Прогн." value={pendingPredictions} />
+          <StatPill icon={<IconCheck />} label="Зіграно" value={finishedMatches} />
+          <StatPill icon={<IconTrophy />} label="Точні" value={stats.totalExactHits} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function FreshBottomNav({ game }: { game: LobbyGame | null }) {
+  const gameRoot = game ? `/games/${game.id}` : "/create/league";
+  const items = [
+    { label: "Game", href: gameRoot, icon: <IconHome /> },
+    { label: "Матчі", href: "/matches", icon: <IconCalendar /> },
+    { label: "Таблички", href: "/tables", icon: <IconTable /> },
+    { label: "Акаунт", href: "/me", icon: <IconUser /> },
+  ];
+
+  return (
+    <nav className="theme-panel fixed inset-x-3 bottom-3 z-40 mx-auto grid max-w-md grid-cols-4 gap-1 rounded-[1.35rem] p-1.5 shadow-2xl sm:sticky sm:inset-x-auto sm:bottom-0 sm:max-w-none sm:rounded-[1.5rem] sm:p-2">
+      {items.map((item, index) => (
+        <Link
+          key={item.label}
+          to={item.href}
+          className={[
+            "flex min-h-[3.25rem] flex-col items-center justify-center gap-1 rounded-[1rem] text-[11px] font-bold transition-colors sm:min-h-14 sm:text-sm",
+            index === 0
+              ? "theme-accent-bg"
+              : "theme-muted hover:bg-[var(--panel-strong)] hover:text-[var(--text)]",
+          ].join(" ")}
+        >
+          <span className="h-6 w-6 sm:h-7 sm:w-7">{item.icon}</span>
+          <span>{item.label}</span>
+        </Link>
+      ))}
+    </nav>
   );
 }
 
@@ -1518,6 +1851,19 @@ function IconLogout({ className }: { className?: string }) {
   );
 }
 
+function IconHome({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <path
+        d="M4 11L12 4L20 11V20H15V14H9V20H4V11Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+    </SvgIcon>
+  );
+}
+
 function IconArrow({ className }: { className?: string }) {
   return (
     <SvgIcon className={className}>
@@ -1527,6 +1873,61 @@ function IconArrow({ className }: { className?: string }) {
         strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
+      />
+    </SvgIcon>
+  );
+}
+
+function IconPitch({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <rect
+        x="3"
+        y="5"
+        width="18"
+        height="14"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path d="M12 5V19" stroke="currentColor" strokeWidth="2" />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
+      <path d="M3 9H6V15H3M21 9H18V15H21" stroke="currentColor" strokeWidth="2" />
+    </SvgIcon>
+  );
+}
+
+function IconTable({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <rect
+        x="4"
+        y="4"
+        width="16"
+        height="16"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path d="M4 10H20M10 4V20M15 4V20" stroke="currentColor" strokeWidth="2" />
+    </SvgIcon>
+  );
+}
+
+function IconChat({ className }: { className?: string }) {
+  return (
+    <SvgIcon className={className}>
+      <path
+        d="M5 5H19C20.1 5 21 5.9 21 7V15C21 16.1 20.1 17 19 17H10L5 21V17C3.9 17 3 16.1 3 15V7C3 5.9 3.9 5 5 5Z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 10H16M8 13H13"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
       />
     </SvgIcon>
   );

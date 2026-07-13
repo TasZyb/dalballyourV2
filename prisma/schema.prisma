@@ -1257,6 +1257,7 @@ enum MatchStatus {
 enum UserRole {
   USER
   ADMIN
+  STATISTICIAN
 }
 
 enum GameStatus {

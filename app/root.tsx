@@ -6,10 +6,14 @@ import {
   Scripts,
   ScrollRestoration,
   data,
+  useFetchers,
+  useLocation,
+  useNavigation,
   useRouteLoaderData,
 } from "react-router";
 
 import type { Route } from "./+types/root";
+import { FootballLoader } from "~/components/FootballLoader";
 import { getThemeFromRequest } from "~/lib/theme.server";
 import "./app.css";
 
@@ -34,6 +38,41 @@ export async function loader({ request }: Route.LoaderArgs) {
   });
 }
 
+function isLobbyPath(pathname?: string) {
+  if (!pathname) return false;
+
+  return (
+    pathname === "/" ||
+    pathname === "/matches" ||
+    pathname === "/tables" ||
+    pathname === "/join" ||
+    pathname === "/create" ||
+    pathname.startsWith("/create/") ||
+    pathname === "/me" ||
+    pathname.startsWith("/me/")
+  );
+}
+
+function GlobalLobbyLoader() {
+  const location = useLocation();
+  const navigation = useNavigation();
+  const fetchers = useFetchers();
+  const navigationPath = navigation.location?.pathname;
+  const isLobbyNavigation =
+    navigation.state !== "idle" &&
+    (isLobbyPath(location.pathname) || isLobbyPath(navigationPath));
+  const isLobbyFetcherBusy = fetchers.some((fetcher) => {
+    if (fetcher.state === "idle") return false;
+
+    const action = fetcher.formAction;
+    const actionPath = action ? new URL(action, "http://local").pathname : null;
+
+    return isLobbyPath(location.pathname) || isLobbyPath(actionPath ?? undefined);
+  });
+
+  return isLobbyNavigation || isLobbyFetcherBusy ? <FootballLoader /> : null;
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const { theme } = useRouteLoaderData<typeof loader>("root") ?? {
     theme: "ucl",
@@ -50,6 +89,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       <body className="theme-page">
         {children}
+        <GlobalLobbyLoader />
         <ScrollRestoration />
         <Scripts />
       </body>

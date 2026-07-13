@@ -13,6 +13,9 @@ export default [
   ]),
 
   route("join", "routes/join.tsx"),
+  route("matches", "routes/matches.tsx"),
+  route("tables", "routes/tables.tsx"),
+  route("s7_stats_room_26", "routes/statistician/workbench.tsx"),
   route("courses", "routes/courses.tsx"),
   route("courses/:courseId", "routes/course-details.tsx"),
   route("teacher/courses", "routes/teacher/courses.tsx"),

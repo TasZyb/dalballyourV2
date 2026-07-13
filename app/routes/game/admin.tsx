@@ -378,6 +378,36 @@ export async function action({ request, params }: ActionFunctionArgs) {
   const formData = await request.formData();
   const intent = String(formData.get("intent") || "");
 
+  if (intent === "updateGameProfile") {
+    const name = String(formData.get("name") || "").trim();
+    const description = String(formData.get("description") || "").trim();
+    const avatarUrl = String(formData.get("avatarUrl") || "").trim();
+    const bannerUrl = String(formData.get("bannerUrl") || "").trim();
+
+    if (!name || name.length < 3) {
+      return data(
+        { error: "Назва гри має містити хоча б 3 символи." },
+        { status: 400 }
+      );
+    }
+
+    if (name.length > 80) {
+      return data({ error: "Назва гри занадто довга." }, { status: 400 });
+    }
+
+    await prisma.game.update({
+      where: { id: game.id },
+      data: {
+        name,
+        description: description || null,
+        avatarUrl: avatarUrl || null,
+        bannerUrl: bannerUrl || null,
+      },
+    });
+
+    return redirect(`/games/${gameId}/admin`);
+  }
+
   if (intent === "createInvite") {
     const code = await getUniqueGameInviteCode();
 
@@ -1193,6 +1223,82 @@ export default function GameAdminPage() {
               Таблиця
             </Link>
           </div>
+        </section>
+
+        <section className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-white/5 p-4 shadow-2xl shadow-black/20 backdrop-blur-xl sm:rounded-[2rem] sm:p-6">
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-[0.2em] text-white/45">
+                Вигляд гри
+              </div>
+              <h2 className="mt-1 text-xl font-black">Іконка, назва і банер</h2>
+            </div>
+
+            <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+              {game.avatarUrl ? (
+                <img
+                  src={game.avatarUrl}
+                  alt={game.name}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
+              ) : (
+                <AdminIcon type="game" />
+              )}
+            </div>
+          </div>
+
+          <Form method="post" className="grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+            <input type="hidden" name="intent" value="updateGameProfile" />
+
+            <label className="grid gap-1 text-sm font-semibold text-white/70">
+              Назва гри
+              <input
+                name="name"
+                defaultValue={game.name}
+                className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-emerald-300/60"
+              />
+            </label>
+
+            <label className="grid gap-1 text-sm font-semibold text-white/70">
+              Іконка гри
+              <input
+                name="avatarUrl"
+                defaultValue={game.avatarUrl ?? ""}
+                placeholder="https://.../icon.png"
+                className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-emerald-300/60"
+              />
+            </label>
+
+            <label className="grid gap-1 text-sm font-semibold text-white/70 lg:col-span-2">
+              Опис
+              <textarea
+                name="description"
+                rows={3}
+                defaultValue={game.description ?? ""}
+                className="resize-none rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-emerald-300/60"
+              />
+            </label>
+
+            <label className="grid gap-1 text-sm font-semibold text-white/70">
+              Банер гри
+              <input
+                name="bannerUrl"
+                defaultValue={game.bannerUrl ?? ""}
+                placeholder="https://.../banner.jpg"
+                className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition focus:border-emerald-300/60"
+              />
+            </label>
+
+            <div className="flex items-end">
+              <button
+                type="submit"
+                className="inline-flex w-full items-center justify-center rounded-2xl bg-emerald-400 px-5 py-3 text-sm font-black text-emerald-950 transition hover:bg-emerald-300"
+              >
+                Зберегти
+              </button>
+            </div>
+          </Form>
         </section>
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

@@ -19,6 +19,8 @@ type ActionData = {
   values?: {
     name?: string;
     description?: string;
+    avatarUrl?: string;
+    bannerUrl?: string;
     linkedTournamentId?: string;
     selectedTournamentIds?: string[];
     visibility?: string;
@@ -121,6 +123,8 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const name = String(formData.get("name") || "").trim();
   const description = String(formData.get("description") || "").trim();
+  const avatarUrl = String(formData.get("avatarUrl") || "").trim();
+  const bannerUrl = String(formData.get("bannerUrl") || "").trim();
   const selectedTournamentIds = formData
     .getAll("selectedTournamentId")
     .map((value) => String(value))
@@ -140,6 +144,8 @@ export async function action({ request }: ActionFunctionArgs) {
   const values: ActionData["values"] = {
     name,
     description,
+    avatarUrl,
+    bannerUrl,
     linkedTournamentId,
     selectedTournamentIds,
     visibility,
@@ -222,6 +228,8 @@ export async function action({ request }: ActionFunctionArgs) {
           name,
           slug,
           description: description || null,
+          avatarUrl: avatarUrl || null,
+          bannerUrl: bannerUrl || null,
           ownerId: currentUser.id,
           linkedTournamentId: tournamentIdToSave,
           inviteCode,
@@ -503,6 +511,20 @@ export default function CreateLeaguePage() {
                 label="Опис"
                 placeholder="Коротко опиши, для кого ця ліга і який у неї вайб."
                 defaultValue={values?.description}
+              />
+
+              <Input
+                name="avatarUrl"
+                label="Іконка гри"
+                placeholder="https://.../league-icon.png"
+                defaultValue={values?.avatarUrl}
+              />
+
+              <Input
+                name="bannerUrl"
+                label="Банер гри"
+                placeholder="https://.../league-banner.jpg"
+                defaultValue={values?.bannerUrl}
               />
 
               <Select
